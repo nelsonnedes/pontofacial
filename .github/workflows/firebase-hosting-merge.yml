@@ -22,20 +22,21 @@ jobs:
             package-lock.json
             apps/pwa/package-lock.json
 
-      # (opcional) instala deps na raiz do monorepo se houver package-lock.json
-      - name: Install root deps (optional)
+      - name: Print layout (debug)
         run: |
-          if [ -f package-lock.json ]; then npm ci; else echo "No root lockfile"; fi
+          pwd
+          ls -la
+          echo "--- apps/pwa ---"
+          ls -la apps/pwa || true
+          echo "--- firebase.json ---"
+          cat firebase.json
 
-      # instala deps do app Next em apps/pwa
       - name: Install deps (apps/pwa)
         run: npm --prefix apps/pwa ci || npm --prefix apps/pwa install
 
-      # build do Next em apps/pwa (gera .firebase/ e artefatos de frameworks)
       - name: Build (apps/pwa)
         run: npm --prefix apps/pwa run build
 
-      # deploy pelo action oficial (Hosting frameworks => Functions/SSR incluídas)
       - name: Deploy to Firebase Hosting (live)
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
