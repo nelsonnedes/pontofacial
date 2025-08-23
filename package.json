@@ -1,0 +1,19 @@
+{
+  "name": "ponto-facial",
+  "private": true,
+  "packageManager": "pnpm@9",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "functions"
+  ],
+  "scripts": {
+    "postinstall": "pnpm -r install",
+    "dev:mobile": "pnpm --filter mobile-repp dev",
+    "dev:web": "pnpm --filter web-ptrp dev",
+    "dev:pwa": "pnpm --filter pwa dev",
+    "build:web": "pnpm --filter web-ptrp build",
+    "build:pwa": "pnpm --filter pwa build",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx || true"
+  }
+}
