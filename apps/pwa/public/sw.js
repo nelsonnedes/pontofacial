@@ -143,7 +143,12 @@ self.addEventListener('message', (event) => {
   const { data, ports } = event;
   
   // Verificação robusta de mensagens para evitar erros "undefined"
-  if (!data || typeof data !== 'object') {
+  if (!data) {
+    // Ignorar silenciosamente mensagens vazias
+    return;
+  }
+  
+  if (typeof data !== 'object') {
     console.warn('⚠️ Mensagem inválida recebida (não é um objeto):', data);
     return;
   }
@@ -152,9 +157,9 @@ self.addEventListener('message', (event) => {
   const type = data.type;
   const id = data.id;
   
-  // Validar tipo explicitamente
+  // Validar tipo explicitamente - ignorar silenciosamente mensagens sem tipo
   if (typeof type !== 'string' || type === '') {
-    console.warn('⚠️ Tipo de mensagem inválido ou ausente:', { data });
+    // Mensagens do sistema podem não ter tipo, não logar erro
     return;
   }
   

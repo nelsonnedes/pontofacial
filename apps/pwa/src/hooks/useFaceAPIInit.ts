@@ -98,13 +98,36 @@ export function useFaceAPIInit() {
 
   // Efeito para inicialização automática (com controle para evitar loops)
   useEffect(() => {
+    // Função para inicializar com logging
+    const attemptInitialization = async () => {
+      console.log('🔄 Tentando inicializar Face API automaticamente...');
+      try {
+        const result = await initializeFaceAPI();
+        if (result) {
+          console.log('✅ Inicialização automática do Face API bem-sucedida');
+        } else {
+          console.warn('⚠️ Inicialização automática do Face API falhou');
+        }
+      } catch (err) {
+        console.error('❌ Erro na inicialização automática do Face API:', err);
+      }
+    };
+    
+    // Verificar se devemos tentar inicialização automática
     if (mounted && !status.initialized && !initializing && initAttemptsRef.current < MAX_INIT_ATTEMPTS) {
       const now = Date.now();
       const timeSinceLastAttempt = now - lastInitTimeRef.current;
       
       // Adicionar delay entre tentativas automáticas
       if (timeSinceLastAttempt > INIT_COOLDOWN_MS || initAttemptsRef.current === 0) {
-        initializeFaceAPI();
+        console.log(`🔄 Agendando inicialização automática (tentativa ${initAttemptsRef.current + 1}/${MAX_INIT_ATTEMPTS})...`);
+        
+        // Usar setTimeout para evitar bloqueio de renderização
+        const timer = setTimeout(() => {
+          attemptInitialization();
+        }, 500);
+        
+        return () => clearTimeout(timer);
       }
     }
   }, [mounted, status.initialized, initializing, initializeFaceAPI]);
