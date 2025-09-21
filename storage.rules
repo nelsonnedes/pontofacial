@@ -1,0 +1,57 @@
+rules_version = '2';
+
+// Regras de segurança para Firebase Storage
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Função para verificar se o usuário está autenticado
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Função para verificar se é admin
+    function isAdmin() {
+      return isSignedIn() && 'admin' in request.auth.token && request.auth.token.admin == true;
+    }
+    
+    // Regras para marcações (fotos de ponto)
+    match /marcacoes/{userId}/{fileName} {
+      // Permitir upload apenas para o próprio usuário autenticado
+      allow write: if isSignedIn() && request.auth.uid == userId;
+      
+      // Permitir leitura para o próprio usuário ou admin
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+    
+    // Regras para documentos administrativos (AFD, AEJ, etc.)
+    match /documentos/{path=**} {
+      // Apenas admins podem fazer upload de documentos
+      allow write: if isAdmin();
+      
+      // Usuários autenticados podem ler documentos
+      allow read: if isSignedIn();
+    }
+    
+    // Regras para avatars/fotos de perfil
+    match /avatars/{userId}/{fileName} {
+      // Permitir upload apenas para o próprio usuário
+      allow write: if isSignedIn() && request.auth.uid == userId;
+      
+      // Permitir leitura para qualquer usuário autenticado
+      allow read: if isSignedIn();
+    }
+    
+    // Regras para arquivos temporários
+    match /temp/{userId}/{fileName} {
+      // Permitir upload apenas para o próprio usuário
+      allow write: if isSignedIn() && request.auth.uid == userId;
+      
+      // Permitir leitura apenas para o próprio usuário
+      allow read: if isSignedIn() && request.auth.uid == userId;
+    }
+    
+    // Negar acesso a qualquer outro caminho não especificado
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

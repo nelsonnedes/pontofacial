@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Admin - Ponto Facial</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="email"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .message {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border: 1px solid #4caf50;
+        }
+        .error {
+            background: #ffebee;
+            color: #d32f2f;
+            border: 1px solid #f44336;
+        }
+        .info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #2196f3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Setup Administrador</h1>
+        <p>Use esta página para definir claims de administrador para um usuário existente.</p>
+        
+        <div id="auth-status" class="message info">Verificando autenticação...</div>
+        
+        <form id="admin-form" style="display: none;">
+            <div class="form-group">
+                <label for="email">Email do usuário:</label>
+                <input type="email" id="email" required placeholder="usuario@exemplo.com">
+            </div>
+            
+            <button type="submit" id="submit-btn">Definir como Administrador</button>
+        </form>
+        
+        <div id="result"></div>
+        
+        <div id="login-prompt" style="display: none;">
+            <p>Você precisa estar logado para usar esta funcionalidade.</p>
+            <a href="/login">Fazer Login</a>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyAcF2A3Y3Eq6sYJrHyD-kdIPJd5oRBlkdc",
+            authDomain: "dbponto-facial.firebaseapp.com",
+            projectId: "dbponto-facial",
+            storageBucket: "dbponto-facial.firebasestorage.app",
+            messagingSenderId: "19681620887",
+            appId: "1:19681620887:web:554c2528d592496130cad2",
+            measurementId: "G-D4DQNPHJM3"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const functions = getFunctions(app);
+
+        // Verificar autenticação
+        onAuthStateChanged(auth, (user) => {
+            const authStatus = document.getElementById('auth-status');
+            const adminForm = document.getElementById('admin-form');
+            const loginPrompt = document.getElementById('login-prompt');
+
+            if (user) {
+                authStatus.innerHTML = `<div class="success">Logado como: ${user.email}</div>`;
+                adminForm.style.display = 'block';
+                loginPrompt.style.display = 'none';
+            } else {
+                authStatus.innerHTML = '<div class="error">Não autenticado</div>';
+                adminForm.style.display = 'none';
+                loginPrompt.style.display = 'block';
+            }
+        });
+
+        // Manipular formulário
+        document.getElementById('admin-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const submitBtn = document.getElementById('submit-btn');
+            const result = document.getElementById('result');
+            
+            if (!email) {
+                result.innerHTML = '<div class="message error">Por favor, insira um email válido.</div>';
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Processando...';
+            result.innerHTML = '<div class="message info">Definindo claims de administrador...</div>';
+            
+            try {
+                const setAdminClaims = httpsCallable(functions, 'setAdminClaims');
+                const response = await setAdminClaims({ email });
+                
+                result.innerHTML = `<div class="message success">${response.data.message}</div>`;
+                document.getElementById('email').value = '';
+                
+            } catch (error) {
+                console.error('Erro:', error);
+                result.innerHTML = `<div class="message error">Erro: ${error.message}</div>`;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Definir como Administrador';
+            }
+        });
+    </script>
+</body>
+</html>

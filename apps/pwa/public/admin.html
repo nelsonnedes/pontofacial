@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Ponto Facial</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .error {
+            color: #d32f2f;
+            background: #ffebee;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #2e7d32;
+            background: #e8f5e8;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .loading {
+            color: #1976d2;
+            padding: 10px;
+        }
+        .activity-item {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+        }
+        button {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        .nav-link {
+            display: inline-block;
+            margin: 10px;
+            padding: 10px 15px;
+            background: #f0f0f0;
+            text-decoration: none;
+            color: #333;
+            border-radius: 4px;
+        }
+        .nav-link:hover {
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Painel Administrativo</h1>
+        
+        <div id="auth-status">Verificando autenticação...</div>
+        
+        <div id="admin-content" style="display: none;">
+            <h2>Navegação</h2>
+            <div>
+                <a href="/admin/empresas" class="nav-link">Empresas</a>
+                <a href="/admin/estabelecimentos" class="nav-link">Estabelecimentos</a>
+                <a href="/admin/usuarios" class="nav-link">Usuários</a>
+                <a href="/admin/politicas" class="nav-link">Políticas CLT</a>
+                <a href="/admin/afd" class="nav-link">Gerar AFD</a>
+                <a href="/admin/aej" class="nav-link">Gerar AEJ</a>
+                <a href="/admin/espelho" class="nav-link">Gerar Espelho (PDF)</a>
+                <a href="/admin/ajustes" class="nav-link">Ajustes de Relógio</a>
+                <a href="/admin/eventos" class="nav-link">Eventos Sensíveis</a>
+                <a href="/admin/feriados" class="nav-link">Feriados</a>
+            </div>
+            
+            <h2>Atividades Recentes</h2>
+            <button onclick="loadRecentActivity()">Carregar Atividades</button>
+            <div id="activities-container"></div>
+        </div>
+        
+        <div id="login-prompt" style="display: none;">
+            <p>Você precisa estar logado como administrador para acessar esta página.</p>
+            <a href="/login">Fazer Login</a>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFirestore, collection, query, orderBy, limit, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyAcF2A3Y3Eq6sYJrHyD-kdIPJd5oRBlkdc",
+            authDomain: "dbponto-facial.firebaseapp.com",
+            projectId: "dbponto-facial",
+            storageBucket: "dbponto-facial.firebasestorage.app",
+            messagingSenderId: "19681620887",
+            appId: "1:19681620887:web:554c2528d592496130cad2",
+            measurementId: "G-D4DQNPHJM3"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Verificar autenticação
+        onAuthStateChanged(auth, async (user) => {
+            const authStatus = document.getElementById('auth-status');
+            const adminContent = document.getElementById('admin-content');
+            const loginPrompt = document.getElementById('login-prompt');
+
+            if (user) {
+                try {
+                    // Verificar se é administrador (você pode ajustar esta lógica)
+                    const token = await user.getIdTokenResult();
+                    const isAdmin = token.claims.admin === true;
+
+                    if (isAdmin) {
+                        authStatus.innerHTML = '<div class="success">Logado como administrador: ' + user.email + '</div>';
+                        adminContent.style.display = 'block';
+                        loginPrompt.style.display = 'none';
+                    } else {
+                        authStatus.innerHTML = '<div class="error">Acesso negado. Você não tem permissões de administrador.</div>';
+                        adminContent.style.display = 'none';
+                        loginPrompt.style.display = 'block';
+                    }
+                } catch (error) {
+                    console.error('Erro ao verificar permissões:', error);
+                    authStatus.innerHTML = '<div class="error">Erro ao verificar permissões: ' + error.message + '</div>';
+                    adminContent.style.display = 'none';
+                    loginPrompt.style.display = 'block';
+                }
+            } else {
+                authStatus.innerHTML = '<div class="error">Não autenticado</div>';
+                adminContent.style.display = 'none';
+                loginPrompt.style.display = 'block';
+            }
+        });
+
+        // Função para carregar atividades recentes
+        window.loadRecentActivity = async function() {
+            const container = document.getElementById('activities-container');
+            container.innerHTML = '<div class="loading">Carregando atividades...</div>';
+
+            try {
+                const user = auth.currentUser;
+                if (!user) {
+                    throw new Error('Usuário não autenticado');
+                }
+
+                // Verificar se é administrador
+                const token = await user.getIdTokenResult();
+                if (!token.claims.admin) {
+                    throw new Error('Acesso negado. Permissões de administrador necessárias.');
+                }
+
+                // Consultar atividades (ajuste conforme sua estrutura de dados)
+                const q = query(
+                    collection(db, 'atividades'),
+                    orderBy('timestamp', 'desc'),
+                    limit(10)
+                );
+
+                const querySnapshot = await getDocs(q);
+                
+                if (querySnapshot.empty) {
+                    container.innerHTML = '<div>Nenhuma atividade encontrada.</div>';
+                    return;
+                }
+
+                let html = '';
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    html += `
+                        <div class="activity-item">
+                            <strong>ID:</strong> ${doc.id}<br>
+                            <strong>Timestamp:</strong> ${data.timestamp ? new Date(data.timestamp.toDate()).toLocaleString() : 'N/A'}<br>
+                            <strong>Dados:</strong> ${JSON.stringify(data, null, 2)}
+                        </div>
+                    `;
+                });
+
+                container.innerHTML = html;
+
+            } catch (error) {
+                console.error('Erro ao carregar atividades:', error);
+                container.innerHTML = '<div class="error">Erro ao carregar atividades: ' + error.message + '</div>';
+            }
+        };
+    </script>
+</body>
+</html>

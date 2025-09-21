@@ -1,29 +1,161 @@
-// Exemplo inicial de regras — refine antes de produção.
+// Regras de segurança refinadas para produção
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isSignedIn() { return request.auth != null; }
-    function isAdmin() { return isSignedIn() && 'admin' in request.auth.token && request.auth.token.admin == true; }
+    // Funções auxiliares para validação
+    function isSignedIn() { 
+      return request.auth != null; 
+    }
+    
+    function isAdmin() { 
+      return isSignedIn() && 'admin' in request.auth.token && request.auth.token.admin == true; 
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function isValidTimestamp() {
+      return request.resource.data.timestamp is timestamp &&
+             request.resource.data.timestamp > timestamp.date(2024, 1, 1) &&
+             request.resource.data.timestamp <= request.time;
+    }
+    
+    function hasRequiredMarcacaoFields() {
+      return request.resource.data.keys().hasAll(['usuarioId', 'timestamp', 'tipo', 'location']) &&
+             request.resource.data.usuarioId is string &&
+             request.resource.data.tipo in ['entrada', 'saida'];
+    }
 
-    match /empresas/{id} {
+    // Empresas - apenas admin pode modificar, usuários autenticados podem ler
+    match /empresas/{empresaId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+      
+      // Sub-coleções de empresas
+      match /funcionarios/{userId} {
+        allow read: if isAdmin() || isOwner(userId);
+        allow write: if isAdmin();
+      }
+    }
+    
+    // Estabelecimentos
+    match /estabelecimentos/{estabelecimentoId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
-    match /estabelecimentos/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    
+    // Usuários (coleção antiga) - mais restritivo
+    match /usuarios/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isOwner(userId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['admin', 'empresaId', 'estabelecimentoId']));
+      allow delete: if isAdmin();
     }
-    match /usuarios/{id} {
-      allow read, write: if isAdmin() || (isSignedIn() && request.auth.uid == id);
+    
+    // Usuários (coleção nova) - para sistema PWA
+    match /users/{userId} {
+      allow read: if isSignedIn(); // Todos usuários logados podem ler
+      allow create: if isSignedIn(); // Qualquer usuário logado pode criar
+      allow update: if isAdmin() || (isOwner(userId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])); // Não pode mudar role
+      allow delete: if isAdmin();
     }
-    match /marcacoes/{id} {
-      allow create: if isSignedIn() && request.resource.data.usuarioId == request.auth.uid;
-      allow read: if isAdmin() || resource.data.usuarioId == request.auth.uid;
+    
+    // Marcações - validação mais rigorosa
+    match /marcacoes/{marcacaoId} {
+      allow create: if isSignedIn() && 
+        request.resource.data.usuarioId == request.auth.uid &&
+        hasRequiredMarcacaoFields() &&
+        isValidTimestamp();
+      allow read: if isAdmin() || (isSignedIn() && resource.data.usuarioId == request.auth.uid);
+      allow update: if isAdmin(); // Apenas admin pode modificar marcações
+      allow delete: if isAdmin();
+    }
+    
+    // Time records - para o novo sistema
+    match /timeRecords/{recordId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow update, delete: if isAdmin();
     }
-    match /sequences/{id} {
+    
+    // Sequências - apenas para sistema interno
+    match /sequences/{sequenceId} {
+      allow read: if false; // Nunca permitir leitura direta
+      allow write: if false; // Apenas Cloud Functions podem escrever
+    }
+    
+    // Atividades/eventos - apenas admin
+    match /atividades/{atividadeId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // Logs de auditoria - apenas leitura para admin
+    match /auditLogs/{logId} {
       allow read: if isAdmin();
-      allow write: if isAdmin(); // NSR gerado no servidor
+      allow write: if false; // Apenas Cloud Functions podem escrever
+    }
+    
+    // Assinaturas de documentos - apenas leitura para admin
+    match /documentSignatures/{signatureId} {
+      allow read: if isAdmin();
+      allow write: if false; // Apenas Cloud Functions podem escrever
+    }
+    
+    // Webhooks - apenas sistema
+    match /webhookLogs/{webhookId} {
+      allow read: if isAdmin();
+      allow write: if false; // Apenas Cloud Functions podem escrever
+    }
+    
+    // Configurações do sistema - apenas admin
+    match /systemConfig/{configId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // Feriados
+    match /feriados/{feriadoId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // Políticas CLT
+    match /politicas/{politicaId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // Dados de funcionários (face embeddings, etc.)
+    match /funcionarios/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow write: if isAdmin() || (isOwner(userId) && 
+        request.resource.data.keys().hasAll(['faceEmbedding']) &&
+        request.resource.data.keys().hasOnly(['faceEmbedding', 'updatedAt']));
+    }
+    
+    // Geofencing - Cercas Virtuais
+    match /geofences/{geofenceId} {
+      allow read: if isSignedIn(); // Todos podem ler geofences
+      allow write: if isAdmin(); // Apenas admin pode criar/editar geofences
+    }
+    
+    // Validações de geofencing
+    match /geofence_validations/{validationId} {
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+    
+    // Face embeddings na coleção usuarios para compatibilidade
+    match /usuarios/{userId} {
+      allow update: if isOwner(userId) && request.resource.data.keys().hasAny(['faceEmbedding', 'faceRegisteredAt']);
+    }
+    
+    // Negar acesso a qualquer outro documento não especificado
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

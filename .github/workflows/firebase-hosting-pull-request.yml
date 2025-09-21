@@ -23,21 +23,44 @@ jobs:
             package-lock.json
             apps/pwa/package-lock.json
 
-      - name: Install root deps (optional)
+      - name: Print layout (debug)
         run: |
-          if [ -f package-lock.json ]; then npm ci; else echo "No root lockfile"; fi
+          pwd
+          ls -la
+          echo "--- apps/pwa ---"
+          ls -la apps/pwa || true
+          echo "--- firebase.json ---"
+          cat firebase.json
 
       - name: Install deps (apps/pwa)
-        run: npm --prefix apps/pwa ci || npm --prefix apps/pwa install
+        run: |
+          cd apps/pwa
+          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: Create .env file
+        run: |
+          cd apps/pwa
+          echo "NEXT_PUBLIC_SIGN_CADES_URL=https://placeholder.com/sign/cades" > .env.local
+          echo "NEXT_PUBLIC_SIGN_PADES_URL=https://placeholder.com/sign/pades" >> .env.local
+
+      - name: Verify Tailwind CSS setup
+        run: |
+          cd apps/pwa
+          echo "Checking Tailwind CSS configuration..."
+          ls -la tailwind.config.* || echo "No tailwind config found"
+          ls -la postcss.config.* || echo "No postcss config found"
+          ls -la src/app/globals.css || echo "No globals.css found"
 
       - name: Build (apps/pwa)
-        run: npm --prefix apps/pwa run build
+        run: |
+          cd apps/pwa
+          npm run build
 
       - name: Deploy preview to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DBPONTO_FACIAL }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           projectId: dbponto-facial
           channelId: preview-${{ github.event.pull_request.number }}
           expires: 7d

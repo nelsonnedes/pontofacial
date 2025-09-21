@@ -1,7 +1,7 @@
-import { db as firestore, storage } from '@/app/lib/firebase'
+import { db as firestore, storage } from '@/lib/firebase'
 import { collection, doc, runTransaction, serverTimestamp, addDoc } from 'firebase/firestore'
 import { ref, uploadBytes } from 'firebase/storage'
-import { drain, Pendencia } from '@/app/lib/queue'
+import { drainQueue, Pendencia } from '@/lib/offline-queue'
 
 function dataURLToBlob(dataURL:string){
   const arr = dataURL.split(',');
@@ -20,7 +20,8 @@ export async function processOne(p: Pendencia){
   let nsr = 1
   await runTransaction(firestore, async (tx)=>{
     const snap = await tx.get(seqRef as any)
-    const curr = (snap.exists() ? (snap.data().value||0) : 0) + 1
+    const data = snap.exists() ? snap.data() : null
+    const curr = (data ? ((data as any).value || 0) : 0) + 1
     tx.set(seqRef as any, { value: curr }, { merge: true })
     nsr = curr
   })
@@ -44,10 +45,45 @@ export async function processOne(p: Pendencia){
 
 export async function syncPending(){
   if (!navigator.onLine) return
-  await drain(async (p)=>{ await processOne(p) })
+  await drainQueue(async (p)=>{ await processOne(p) })
 }
 
 export function attachOnlineSync(){
+  // Sincronização sempre habilitada em produção
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Listeners básicos sempre ativos
   window.addEventListener('online', ()=>{ syncPending().catch(()=>{}) })
   document.addEventListener('visibilitychange', ()=>{ if (!document.hidden) syncPending().catch(()=>{}) })
+  
+  // Service Worker habilitado apenas em produção
+  if ('serviceWorker' in navigator && isProduction) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'TRIGGER_SYNC') {
+        syncPending().catch(()=>{})
+      }
+      if (event.data && event.data.type === 'CONNECTION_RESTORED') {
+        syncPending().catch(()=>{})
+      }
+      if (event.data && event.data.type === 'BACKGROUND_SYNC') {
+        syncPending().catch(()=>{})
+      }
+    })
+    
+    // Registrar background sync se disponível
+    navigator.serviceWorker.ready.then(registration => {
+      if ('sync' in registration && registration.sync) {
+        (registration.sync as any).register('background-sync').catch(()=>{})
+      }
+    }).catch(()=>{})
+  }
+  
+  // Em desenvolvimento, forçar sincronização imediata
+  if (!isProduction) {
+    setInterval(() => {
+      if (navigator.onLine) {
+        syncPending().catch(()=>{})
+      }
+    }, 10000) // A cada 10 segundos em dev
+  }
 }
