@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
-import { QueueDB } from '@/lib/queue';
+import { db as offlineDb } from '@/lib/offline-queue';
 
 interface QueueStatusProps {
   className?: string;
@@ -47,8 +47,7 @@ export default function QueueStatus({
   const loadQueueDetails = async () => {
     if (showDetails || isExpanded) {
       try {
-        const db = new QueueDB();
-        const items = await db.pendencias.orderBy('createdAt').reverse().limit(10).toArray();
+        const items = await offlineDb.pendencias.orderBy('createdAt').reverse().limit(10).toArray();
         setQueueDetails(items);
       } catch (error) {
         console.error('Erro ao carregar detalhes da fila:', error);
@@ -87,7 +86,7 @@ export default function QueueStatus({
     return 'Sincronizado';
   };
 
-  const formatDate = (timestamp: number) => {
+  const formatDate = (timestamp: number | Date) => {
     return new Date(timestamp).toLocaleString('pt-BR', {
       day: '2-digit',
       month: '2-digit',

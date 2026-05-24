@@ -1,7 +1,8 @@
 'use client';
 
+import { notifyUser, confirmUser } from '@/lib/user-dialogs';
 import { useState, useCallback } from 'react';
-import { useGeofencing } from '@/hooks/useGeofencing';
+import { useGeofenceManager } from '@/hooks/useGeofenceManager';
 import { Geofence, Location, PointType, formatDistance } from '@/lib/geofencing';
 
 interface GeofenceManagerProps {
@@ -24,7 +25,7 @@ export default function GeofenceManager({ className = '' }: GeofenceManagerProps
     deleteGeofence,
     toggleGeofence,
     clearError
-  } = useGeofencing();
+  } = useGeofenceManager();
 
   // Formulário para criar/editar cerca
   const [formData, setFormData] = useState({
@@ -87,25 +88,63 @@ export default function GeofenceManager({ className = '' }: GeofenceManagerProps
     setViewMode('edit');
   }, []);
 
+  // Estado para controle do GPS
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+
   // Obter localização atual do navegador
   const getCurrentLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      alert('Geolocalização não é suportada neste navegador.');
+      notifyUser('❌ Geolocalização não é suportada neste navegador.');
       return;
     }
 
+    console.log('📍 Solicitando localização atual...');
+    setIsGettingLocation(true);
+
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    };
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        console.log('✅ Localização obtida:', {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        });
+
         setFormData(prev => ({
           ...prev,
           latitude: position.coords.latitude.toFixed(6),
           longitude: position.coords.longitude.toFixed(6)
         }));
+
+        setIsGettingLocation(false);
+        notifyUser(`✅ Localização obtida com sucesso!\n📍 Lat: ${position.coords.latitude.toFixed(6)}\n📍 Lng: ${position.coords.longitude.toFixed(6)}\n🎯 Precisão: ${Math.round(position.coords.accuracy)}m`);
       },
       (error) => {
-        console.error('Erro ao obter localização:', error);
-        alert('Erro ao obter localização atual.');
-      }
+        console.error('❌ Erro ao obter localização:', error);
+        setIsGettingLocation(false);
+        
+        let errorMessage = 'Erro desconhecido ao obter localização.';
+        
+        switch(error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = '❌ Permissão de localização negada.\nVá nas configurações do navegador e permita acesso à localização.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = '❌ Localização indisponível.\nVerifique se o GPS está ativado.';
+            break;
+          case error.TIMEOUT:
+            errorMessage = '❌ Tempo limite excedido.\nTente novamente.';
+            break;
+        }
+        
+        notifyUser(errorMessage);
+      },
+      options
     );
   }, []);
 
@@ -114,7 +153,7 @@ export default function GeofenceManager({ className = '' }: GeofenceManagerProps
     e.preventDefault();
     
     if (!formData.name || !formData.latitude || !formData.longitude) {
-      alert('Preencha todos os campos obrigatórios.');
+      notifyUser('Preencha todos os campos obrigatórios.');
       return;
     }
 
@@ -128,29 +167,45 @@ export default function GeofenceManager({ className = '' }: GeofenceManagerProps
       };
 
       const radius = parseInt(formData.radius);
-      
-      const geofenceOptions: Partial<Geofence> = {
-        description: formData.description,
-        allowedTypes: formData.allowedTypes,
-        strictMode: formData.strictMode,
-        alertMode: formData.alertMode,
-        workingHours: formData.workingHours.enabled ? {
-          start: formData.workingHours.start,
-          end: formData.workingHours.end,
-          days: formData.workingHours.days
-        } : undefined
-      };
 
       if (viewMode === 'edit' && selectedFence) {
+        // ✅ CORREÇÃO: Atualizar com dados corretos
         await updateGeofence(selectedFence.id, {
           name: formData.name,
-          center,
+          description: formData.description,
+          latitude: center.latitude,
+          longitude: center.longitude,
           radius,
-          ...geofenceOptions
+          allowedTypes: formData.allowedTypes,
+          strictMode: formData.strictMode,
+          alertMode: formData.alertMode,
+          workingHours: formData.workingHours.enabled ? {
+            enabled: true,
+            start: formData.workingHours.start,
+            end: formData.workingHours.end,
+            days: formData.workingHours.days
+          } : undefined
         });
         console.log('✅ Cerca virtual atualizada');
       } else {
-        await createGeofence(formData.name, center, radius, geofenceOptions);
+        // ✅ CORREÇÃO: Chamar createGeofence com objeto correto
+        await createGeofence({
+          name: formData.name,
+          description: formData.description,
+          latitude: center.latitude,
+          longitude: center.longitude,
+          radius,
+          allowedTypes: formData.allowedTypes,
+          active: true, // Nova cerca sempre ativa
+          strictMode: formData.strictMode,
+          alertMode: formData.alertMode,
+          workingHours: formData.workingHours.enabled ? {
+            enabled: true,
+            start: formData.workingHours.start,
+            end: formData.workingHours.end,
+            days: formData.workingHours.days
+          } : undefined
+        });
         console.log('✅ Cerca virtual criada');
       }
 
@@ -159,7 +214,7 @@ export default function GeofenceManager({ className = '' }: GeofenceManagerProps
       
     } catch (err) {
       console.error('❌ Erro ao salvar cerca virtual:', err);
-      alert('Erro ao salvar cerca virtual. Tente novamente.');
+      notifyUser('Erro ao salvar cerca virtual. Tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -167,7 +222,7 @@ export default function GeofenceManager({ className = '' }: GeofenceManagerProps
 
   // Deletar cerca
   const handleDelete = useCallback(async (fence: Geofence) => {
-    if (!confirm(`Tem certeza que deseja excluir a cerca "${fence.name}"?`)) {
+    if (!confirmUser(`Tem certeza que deseja excluir a cerca "${fence.name}"?`)) {
       return;
     }
 
@@ -176,7 +231,7 @@ export default function GeofenceManager({ className = '' }: GeofenceManagerProps
       console.log('✅ Cerca virtual excluída');
     } catch (err) {
       console.error('❌ Erro ao excluir cerca:', err);
-      alert('Erro ao excluir cerca virtual.');
+      notifyUser('Erro ao excluir cerca virtual.');
     }
   }, [deleteGeofence]);
 
@@ -187,7 +242,7 @@ export default function GeofenceManager({ className = '' }: GeofenceManagerProps
       console.log(`✅ Cerca ${!fence.active ? 'ativada' : 'desativada'}`);
     } catch (err) {
       console.error('❌ Erro ao alterar status da cerca:', err);
-      alert('Erro ao alterar status da cerca.');
+      notifyUser('Erro ao alterar status da cerca.');
     }
   }, [toggleGeofence]);
 
@@ -386,9 +441,17 @@ export default function GeofenceManager({ className = '' }: GeofenceManagerProps
           <button
             type="button"
             onClick={getCurrentLocation}
-            className="text-sm text-blue-600 hover:text-blue-700 underline"
+            disabled={isGettingLocation}
+            className="text-sm text-blue-600 hover:text-blue-700 underline disabled:text-gray-400 disabled:no-underline flex items-center gap-1"
           >
-            📍 Usar minha localização atual
+            {isGettingLocation ? (
+              <>
+                <div className="animate-spin w-3 h-3 border border-blue-500 border-t-transparent rounded-full"></div>
+                🔄 Obtendo localização...
+              </>
+            ) : (
+              '📍 Usar minha localização atual'
+            )}
           </button>
         </div>
 

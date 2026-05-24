@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { queueManager, db, OfflineTimeRecord } from '@/lib/offline-db';
+import { queueManager, OfflineTimeRecord } from '@/lib/offline-queue';
 import { useSyncStatus } from './useSyncStatus';
 import { useAuth } from './useAuth';
 
@@ -32,7 +32,6 @@ export function useOfflineSync() {
   const updateStats = useCallback(async () => {
     try {
       const stats = await queueManager.getQueueStats();
-      const unsyncedRecords = await queueManager.getUnsyncedRecords();
       
       setState(prev => ({
         ...prev,
@@ -170,7 +169,7 @@ export function useOfflineSync() {
     if (isOnline && !isSyncing) {
       queueManager.startProcessing();
     }
-  }, [isOnline, isSyncing]); // Remover updateStats da dependência
+  }, [isOnline, isSyncing, updateStats]); // ✅ CORREÇÃO: Incluir updateStats nas dependências
   
   // Atualizar estatísticas periodicamente - separar em useEffect próprio
   useEffect(() => {

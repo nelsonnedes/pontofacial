@@ -1,4 +1,4 @@
-name: Hospedagem Firebase + Next.js (webframeworks) — preview
+name: Firebase preview release
 
 on:
   pull_request:
@@ -12,49 +12,47 @@ jobs:
       pull-requests: write
       id-token: write
 
+    env:
+      PONTO_FACIAL_RELEASE_PROFILE: staging
+      NEXT_PUBLIC_PONTO_FACIAL_RELEASE_PROFILE: staging
+      NEXT_PUBLIC_BIOMETRIC_ENGINE: legacy-client
+      NEXT_PUBLIC_BIOMETRIC_LIVENESS_REQUIRED: "true"
+      NEXT_PUBLIC_ALLOW_BIOMETRIC_DEMO: "false"
+      NEXT_PUBLIC_ALLOW_MANUAL_LIVENESS: "false"
+      NEXT_PUBLIC_ALLOW_LEGACY_CLIENT_BIOMETRICS: "true"
+      NEXT_PUBLIC_REQUIRED_APP_TERMS_VERSION: 2026-05-24-app-terms-v1
+      NEXT_PUBLIC_REQUIRED_PRIVACY_NOTICE_VERSION: 2026-05-24-privacy-notice-v1
+      NEXT_PUBLIC_REQUIRED_BIOMETRIC_NOTICE_VERSION: 2026-05-24-biometric-notice-v1
+      NEXT_PUBLIC_REQUIRED_LEGAL_CONTENT_HASH: 2026-05-24-legal-baseline
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            apps/pwa/package-lock.json
+          node-version: 22
+          cache: pnpm
 
-      - name: Print layout (debug)
-        run: |
-          pwd
-          ls -la
-          echo "--- apps/pwa ---"
-          ls -la apps/pwa || true
-          echo "--- firebase.json ---"
-          cat firebase.json
+      - name: Enable pnpm
+        run: corepack enable
 
-      - name: Install deps (apps/pwa)
-        run: |
-          cd apps/pwa
-          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: Create .env file
-        run: |
-          cd apps/pwa
-          echo "NEXT_PUBLIC_SIGN_CADES_URL=https://placeholder.com/sign/cades" > .env.local
-          echo "NEXT_PUBLIC_SIGN_PADES_URL=https://placeholder.com/sign/pades" >> .env.local
+      - name: Typecheck
+        run: pnpm typecheck
 
-      - name: Verify Tailwind CSS setup
-        run: |
-          cd apps/pwa
-          echo "Checking Tailwind CSS configuration..."
-          ls -la tailwind.config.* || echo "No tailwind config found"
-          ls -la postcss.config.* || echo "No postcss config found"
-          ls -la src/app/globals.css || echo "No globals.css found"
+      - name: Lint
+        run: pnpm lint
 
-      - name: Build (apps/pwa)
-        run: |
-          cd apps/pwa
-          npm run build
+      - name: Unit tests
+        run: pnpm --filter pwa test
+
+      - name: Firestore rules tests
+        run: pnpm test:rules
+
+      - name: Build all
+        run: pnpm build:all
 
       - name: Deploy preview to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0

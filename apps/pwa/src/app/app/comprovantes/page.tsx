@@ -1,17 +1,25 @@
 'use client';
 
+import { notifyUser } from '@/lib/user-dialogs';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { collection, query, where, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore';
-import { format, parseISO, isValid } from 'date-fns';
+import { collection, query, where, limit, getDocs, Timestamp } from 'firebase/firestore';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface MarcacaoData {
   id: string;
+  source: 'timeRecords' | 'marcacoes';
   usuarioId: string;
+  authUid?: string;
+  employeeId?: string;
+  employeeName?: string;
+  employeeEmail?: string;
+  type?: string;
   estabId: string;
+  companyName?: string;
   dataHoraTZ: string;
   gps?: {
     latitude: number;
@@ -19,14 +27,144 @@ interface MarcacaoData {
     accuracy: number;
     address?: string;
   };
-  fotoPath: string;
+  fotoPath?: string | null;
+  photoHash?: string;
   origem: string;
+  status?: string;
+  reviewStatus?: string;
+  verificationStatus?: string;
+  captureMethod?: string;
+  hasFacialRecognition?: boolean;
+  hasPhotoEvidence?: boolean;
+  faceMatch?: {
+    similarity?: number;
+    confidence?: number;
+    method?: string;
+  };
   livenessResults?: { [key: string]: boolean };
   createdAt: Timestamp;
   nsr?: number;
 }
 
 type FilterPeriod = 'today' | 'week' | 'month' | 'all';
+
+function normalizeTimestamp(value: any): number {
+  if (!value) return 0;
+  if (typeof value === 'number') return value;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value.seconds === 'number') return value.seconds * 1000;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function readText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return fallback;
+}
+
+function readOptionalText(value: unknown): string | undefined {
+  return readText(value) || undefined;
+}
+
+function normalizePointType(data: any): string {
+  const rawType = String(data.type || data.tipo || '').toLowerCase();
+  const labels: Record<string, string> = {
+    entry: 'Entrada',
+    entrada: 'Entrada',
+    exit: 'Saída',
+    saida: 'Saída',
+    break_start: 'Início de pausa',
+    intervalo_inicio: 'Início de pausa',
+    pausa_inicio: 'Início de pausa',
+    break_end: 'Fim de pausa',
+    intervalo_fim: 'Fim de pausa',
+    pausa_fim: 'Fim de pausa'
+  };
+
+  return labels[rawType] || 'Registro';
+}
+
+function normalizeGps(data: any): MarcacaoData['gps'] {
+  const location = data.location || data.localizacao || data.gps || {};
+  const latitude = Number(location.latitude ?? location.lat ?? data.latitude ?? data.lat);
+  const longitude = Number(location.longitude ?? location.lng ?? data.longitude ?? data.lng);
+  const accuracy = Number(location.accuracy ?? location.precisao ?? data.accuracy ?? data.precisao ?? 0);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return undefined;
+  }
+
+  return {
+    latitude,
+    longitude,
+    accuracy: Number.isFinite(accuracy) ? accuracy : 0,
+    address: readOptionalText(location.address || location.endereco || data.endereco)
+  };
+}
+
+function normalizeComprovanteRecord(
+  id: string,
+  data: any,
+  source: MarcacaoData['source'],
+  fallbackUid: string
+): MarcacaoData | null {
+  const timestampMs = normalizeTimestamp(
+    data.timestamp || data.dataHoraTZ || data.serverTimestamp || data.createdAt || data.dataHora
+  );
+
+  if (!id || !timestampMs) {
+    return null;
+  }
+
+  const employeeName = readText(
+    data.employeeName || data.usuarioNome || data.userName || data.nomeCompleto || data.metadata?.facialRecognition?.userName
+  );
+  const companyName = readText(data.companyName || data.empresaNome || data.estabId || data.geofence?.name);
+  const locationLabel = readText(
+    data.location?.address ||
+      data.localizacao?.endereco ||
+      data.estabId ||
+      data.companyName ||
+      data.empresaNome ||
+      data.geofence?.name,
+    'Localização registrada'
+  );
+  const userId = readText(data.userId || data.usuarioId || data.employeeId || data.funcionarioId || data.authUid, fallbackUid);
+  const employeeId = readText(data.employeeId || data.funcionarioId || data.userId || data.usuarioId);
+
+  return {
+    id,
+    source,
+    usuarioId: userId,
+    authUid: readOptionalText(data.authUid || data.actorUid),
+    employeeId: employeeId || undefined,
+    employeeName: employeeName || undefined,
+    employeeEmail: readOptionalText(data.employeeEmail || data.usuarioEmail || data.userEmail),
+    type: normalizePointType(data),
+    estabId: locationLabel,
+    companyName: companyName || undefined,
+    dataHoraTZ: new Date(timestampMs).toISOString(),
+    gps: normalizeGps(data),
+    fotoPath: readOptionalText(data.photoUrl || data.fotoPath) || null,
+    photoHash: readOptionalText(data.photoHash),
+    origem: readText(data.origem || data.captureMethod, 'server-mark-point'),
+    status: readOptionalText(data.status),
+    reviewStatus: readOptionalText(data.reviewStatus),
+    verificationStatus: readOptionalText(data.verificationStatus),
+    captureMethod: readOptionalText(data.captureMethod),
+    hasFacialRecognition: data.hasFacialRecognition === true,
+    hasPhotoEvidence: data.hasPhotoEvidence === true || !!data.photoHash,
+    faceMatch: data.faceMatch,
+    livenessResults: data.livenessResults,
+    createdAt: Timestamp.fromMillis(timestampMs),
+    nsr: Number.isFinite(Number(data.nsr)) ? Number(data.nsr) : undefined
+  };
+}
 
 export default function ComprovantesPage() {
   const router = useRouter();
@@ -72,34 +210,65 @@ export default function ComprovantesPage() {
     setError('');
     
     try {
-      const marcacoesRef = collection(db, 'marcacoes');
-      const q = query(
-        marcacoesRef,
-        where('usuarioId', '==', currentUser.uid),
-        orderBy('createdAt', 'desc'),
-        limit(100)
-      );
-      
-      const querySnapshot = await getDocs(q);
       const marcacoesData: MarcacaoData[] = [];
-      
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        
-        // Validação de dados reais - apenas incluir registros válidos
-        if (data.usuarioId && data.createdAt && data.dataHoraTZ) {
-          marcacoesData.push({
-            id: doc.id,
-            ...data,
-            // Garantir campos obrigatórios
-            estabId: data.estabId || 'Não informado',
-            origem: data.origem || 'sistema-digital',
-            fotoPath: data.fotoPath || null
-          } as MarcacaoData);
-        }
+
+      const recordQueries: Array<{
+        source: MarcacaoData['source'];
+        field: string;
+      }> = [
+        { source: 'timeRecords', field: 'authUid' },
+        { source: 'timeRecords', field: 'actorUid' },
+        { source: 'timeRecords', field: 'userId' },
+        { source: 'timeRecords', field: 'usuarioId' },
+        { source: 'marcacoes', field: 'authUid' },
+        { source: 'marcacoes', field: 'actorUid' },
+        { source: 'marcacoes', field: 'usuarioId' }
+      ];
+
+      const queryResults = await Promise.allSettled(
+        recordQueries.map(async ({ source, field }) => {
+          const snapshot = await getDocs(query(
+            collection(db, source),
+            where(field, '==', currentUser.uid),
+            limit(100)
+          ));
+          return { snapshot, source };
+        })
+      );
+
+      queryResults.forEach((result) => {
+        if (result.status !== 'fulfilled') return;
+
+        const { snapshot, source } = result.value;
+        snapshot.forEach((document) => {
+          const record = normalizeComprovanteRecord(
+            document.id,
+            document.data(),
+            source,
+            currentUser.uid
+          );
+          if (record) {
+            marcacoesData.push(record);
+          }
+        });
       });
+
+      // Ordenar por data mais recente e remover duplicatas
+      const byId = new Map<string, MarcacaoData>();
+      marcacoesData
+        .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
+        .forEach((record) => {
+          const existing = byId.get(record.id);
+          if (!existing || existing.source === 'marcacoes') {
+            byId.set(record.id, record);
+          }
+        });
+
+      const uniqueRecords = Array.from(byId.values())
+        .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
+        .slice(0, 100);
       
-      setMarcacoes(marcacoesData);
+      setMarcacoes(uniqueRecords);
     } catch (error: any) {
       console.error('Erro ao carregar marcações:', error);
       setError('Não foi possível carregar o histórico. Verifique sua conexão e tente novamente.');
@@ -144,6 +313,9 @@ export default function ComprovantesPage() {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(m => 
         m.estabId.toLowerCase().includes(term) ||
+        (m.employeeName || '').toLowerCase().includes(term) ||
+        (m.companyName || '').toLowerCase().includes(term) ||
+        (m.type || '').toLowerCase().includes(term) ||
         m.origem.toLowerCase().includes(term) ||
         format(m.createdAt.toDate(), 'dd/MM/yyyy HH:mm', { locale: ptBR }).includes(term)
       );
@@ -176,6 +348,8 @@ export default function ComprovantesPage() {
       'web-admin': { color: 'bg-purple-100 text-purple-800', label: 'Administrador' },
       'offline-sync': { color: 'bg-orange-100 text-orange-800', label: 'Sincronização' },
       'facial-recognition': { color: 'bg-indigo-100 text-indigo-800', label: 'Reconhecimento Facial' },
+      'server-mark-point': { color: 'bg-green-100 text-green-800', label: 'Servidor validado' },
+      'facial': { color: 'bg-indigo-100 text-indigo-800', label: 'Reconhecimento Facial' },
       'hybrid-capture': { color: 'bg-teal-100 text-teal-800', label: 'Captura Híbrida' },
     };
     
@@ -202,21 +376,51 @@ export default function ComprovantesPage() {
     );
   };
 
+  const getOperationalStatus = (marcacao: MarcacaoData) => {
+    const status = (marcacao.status || '').toLowerCase();
+    const reviewStatus = (marcacao.reviewStatus || '').toLowerCase();
+    const verificationStatus = (marcacao.verificationStatus || '').toLowerCase();
+    const hasEvidence = !!(
+      marcacao.hasPhotoEvidence ||
+      marcacao.hasFacialRecognition ||
+      marcacao.fotoPath ||
+      marcacao.photoHash ||
+      marcacao.livenessResults
+    );
+
+    if (status === 'rejeitado' || reviewStatus === 'rejected') {
+      return { label: 'Rejeitado em revisão', className: 'status-rejected' };
+    }
+
+    if (status === 'pendente' || reviewStatus.includes('pending')) {
+      return { label: 'Pendente de revisão', className: 'status-pending' };
+    }
+
+    if (verificationStatus === 'verified' || reviewStatus === 'approved' || status === 'aprovado') {
+      return { label: 'Validação confirmada', className: 'status-evidence' };
+    }
+
+    if (hasEvidence) {
+      return { label: 'Evidência registrada', className: 'status-evidence' };
+    }
+
+    return { label: 'Sem validação confirmada', className: 'status-pending' };
+  };
+
   const validateMarcacaoData = (marcacao: MarcacaoData): boolean => {
     // Validar dados essenciais para geração de comprovante
     return !!(
       marcacao.id &&
       marcacao.usuarioId &&
       marcacao.createdAt &&
-      marcacao.dataHoraTZ &&
-      marcacao.estabId
+      marcacao.dataHoraTZ
     );
   };
 
   const generateComprovante = async (marcacao: MarcacaoData) => {
     // Validar dados antes de gerar comprovante
     if (!validateMarcacaoData(marcacao)) {
-      alert('❌ Erro: Dados da marcação incompletos.\n\nNão é possível gerar comprovante para esta marcação.');
+      notifyUser('❌ Erro: Dados da marcação incompletos.\n\nNão é possível gerar comprovante para esta marcação.');
       return;
     }
 
@@ -228,6 +432,13 @@ export default function ComprovantesPage() {
       ]);
       
       // Criar HTML do comprovante
+      const operationalStatus = getOperationalStatus(marcacao);
+      const displayName = marcacao.employeeName || marcacao.usuarioId;
+      const displayEmail = marcacao.employeeEmail ? `<br><span style="color: #6b7280;">${marcacao.employeeEmail}</span>` : '';
+      const displayCompany = marcacao.companyName || marcacao.estabId || 'Não informado';
+      const facePercent = typeof marcacao.faceMatch?.similarity === 'number'
+        ? `${Math.round(marcacao.faceMatch.similarity * 100)}%`
+        : '';
       const comprovanteHTML = `
         <!DOCTYPE html>
         <html lang="pt-BR">
@@ -249,7 +460,9 @@ export default function ComprovantesPage() {
             .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280; }
             .verification { background: #dbeafe; padding: 15px; border-radius: 8px; border: 1px solid #3b82f6; }
             .status-badge { display: inline-block; padding: 4px 8px; border-radius: 9999px; font-size: 12px; font-weight: bold; }
-            .status-verified { background: #dcfce7; color: #166534; }
+            .status-evidence { background: #dcfce7; color: #166534; }
+            .status-pending { background: #fef3c7; color: #92400e; }
+            .status-rejected { background: #fee2e2; color: #991b1b; }
             @media print { body { margin: 0; } }
           </style>
         </head>
@@ -263,16 +476,26 @@ export default function ComprovantesPage() {
             <div class="info-section">
               <h3 style="margin-top: 0; color: #2563eb;">📋 Informações do Registro</h3>
               <div class="info-row">
-                <span class="label">Usuário:</span>
-                <span class="value">${marcacao.usuarioId}</span>
+                <span class="label">Funcionário:</span>
+                <span class="value">${displayName}${displayEmail}</span>
               </div>
+              ${marcacao.employeeId ? `
+                <div class="info-row">
+                  <span class="label">ID do Funcionário:</span>
+                  <span class="value">${marcacao.employeeId}</span>
+                </div>
+              ` : ''}
               <div class="info-row">
                 <span class="label">Data/Hora:</span>
                 <span class="value">${formatDateTime(marcacao.createdAt)}</span>
               </div>
               <div class="info-row">
-                <span class="label">Estabelecimento:</span>
-                <span class="value">${marcacao.estabId}</span>
+                <span class="label">Tipo:</span>
+                <span class="value">${marcacao.type || 'Registro'}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Empresa/Local:</span>
+                <span class="value">${displayCompany}</span>
               </div>
               <div class="info-row">
                 <span class="label">Origem:</span>
@@ -280,8 +503,14 @@ export default function ComprovantesPage() {
               </div>
               <div class="info-row">
                 <span class="label">Status:</span>
-                <span class="value"><span class="status-badge status-verified">✅ Verificado</span></span>
+                <span class="value"><span class="status-badge ${operationalStatus.className}">${operationalStatus.label}</span></span>
               </div>
+              ${marcacao.nsr ? `
+                <div class="info-row">
+                  <span class="label">NSR:</span>
+                  <span class="value">${marcacao.nsr}</span>
+                </div>
+              ` : ''}
             </div>
             
             <div class="info-section">
@@ -311,6 +540,22 @@ export default function ComprovantesPage() {
               </div>
             </div>
             ` : ''}
+
+            ${marcacao.hasFacialRecognition || marcacao.faceMatch ? `
+            <div class="info-section">
+              <h3 style="margin-top: 0; color: #2563eb;">✅ Validação Facial</h3>
+              <div class="info-row">
+                <span class="label">Status facial:</span>
+                <span class="value">${marcacao.hasFacialRecognition ? 'Confirmado' : 'Evidência presente'}</span>
+              </div>
+              ${facePercent ? `
+                <div class="info-row">
+                  <span class="label">Similaridade:</span>
+                  <span class="value">${facePercent}</span>
+                </div>
+              ` : ''}
+            </div>
+            ` : ''}
             
             <div class="verification">
               <h3 style="margin-top: 0; color: #1e40af;">🔐 Verificação de Autenticidade</h3>
@@ -318,14 +563,14 @@ export default function ComprovantesPage() {
               ${marcacao.nsr ? `<p><strong>NSR:</strong> ${marcacao.nsr}</p>` : ''}
               <p><strong>Hash de Verificação:</strong> ${generateVerificationHash(marcacao)}</p>
               <p style="margin-bottom: 0; font-size: 12px; color: #4b5563;">
-                Este comprovante foi gerado automaticamente pelo Sistema de Ponto Facial e possui validade legal conforme regulamentações vigentes.
+                Prévia operacional gerada no navegador a partir dos registros encontrados. Para emissão assinada, use uma rotina backend auditável.
               </p>
             </div>
             
             <div class="footer">
               <p>Comprovante gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm:ss", { locale: ptBR })}</p>
               <p>Sistema de Controle de Ponto Digital</p>
-              <p><strong>Documento oficial com validade legal</strong> - Conforme legislação vigente sobre registro de ponto eletrônico</p>
+              <p><strong>Prévia operacional sem assinatura backend</strong> - use apenas para conferência interna.</p>
               <p style="font-size: 10px; color: #9ca3af;">ID de Verificação: ${generateVerificationHash(marcacao)} | Processado em: ${window.location.host}</p>
             </div>
           </div>
@@ -374,10 +619,10 @@ export default function ComprovantesPage() {
         // Adicionar metadados ao PDF
         pdf.setProperties({
           title: `Comprovante de Registro de Ponto - ${formatDateTime(marcacao.createdAt)}`,
-          subject: 'Comprovante Oficial de Controle de Ponto Eletrônico',
+          subject: 'Prévia operacional de controle de ponto',
           author: 'Sistema de Controle de Ponto Digital',
           creator: `Sistema Digital - ${window.location.host}`,
-          keywords: 'ponto eletrônico, comprovante, registro trabalhista, controle de jornada'
+          keywords: 'ponto eletrônico, prévia operacional, registro de ponto, controle de jornada'
         });
 
         // Fazer download do PDF
@@ -385,7 +630,7 @@ export default function ComprovantesPage() {
         pdf.save(fileName);
 
         // Feedback otimizado para produção
-        alert('✅ Comprovante PDF gerado com sucesso!\n\n📁 Arquivo: ' + fileName + '\n📅 Data: ' + formatDateTime(marcacao.createdAt));
+        notifyUser('✅ Prévia PDF gerada com sucesso!\n\n📁 Arquivo: ' + fileName + '\n📅 Data: ' + formatDateTime(marcacao.createdAt));
 
       } finally {
         // Remover elemento temporário
@@ -394,7 +639,7 @@ export default function ComprovantesPage() {
       
     } catch (error) {
       console.error('❌ Erro ao gerar comprovante:', error);
-      alert('Erro ao gerar comprovante: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+      notifyUser('Erro ao gerar comprovante: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     }
   };
 
@@ -573,19 +818,28 @@ export default function ComprovantesPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
                         <h3 className="font-semibold text-gray-900">
-                          📍 {marcacao.estabId}
+                          📍 {marcacao.employeeName || marcacao.usuarioId}
                         </h3>
                         {getOrigemBadge(marcacao.origem)}
                         {getLivenessStatus(marcacao.livenessResults)}
                       </div>
                       
                       <div className="text-sm text-gray-600 space-y-1">
+                        {marcacao.employeeEmail && (
+                          <p>✉️ <strong>E-mail:</strong> {marcacao.employeeEmail}</p>
+                        )}
+                        <p>🏷️ <strong>Tipo:</strong> {marcacao.type || 'Registro'}</p>
                         <p>🕐 <strong>Data/Hora:</strong> {formatDateTime(marcacao.createdAt)}</p>
+                        <p>🏢 <strong>Empresa/Local:</strong> {marcacao.companyName || marcacao.estabId}</p>
                         <p>🌍 <strong>GPS:</strong> {formatGPS(marcacao.gps)}</p>
                         {marcacao.gps?.address && (
                           <p>📍 <strong>Endereço:</strong> {marcacao.gps.address}</p>
                         )}
-                        <p>📸 <strong>Foto:</strong> {marcacao.fotoPath ? 'Capturada' : 'Não disponível'}</p>
+                        <p>📸 <strong>Evidência:</strong> {marcacao.hasPhotoEvidence || marcacao.fotoPath || marcacao.photoHash ? 'Registrada' : 'Não disponível'}</p>
+                        <p>✅ <strong>Validação facial:</strong> {marcacao.hasFacialRecognition ? 'Confirmada' : 'Não confirmada'}</p>
+                        {typeof marcacao.faceMatch?.similarity === 'number' && (
+                          <p>🧬 <strong>Similaridade:</strong> {Math.round(marcacao.faceMatch.similarity * 100)}%</p>
+                        )}
                         {marcacao.nsr && (
                           <p>🔢 <strong>NSR:</strong> {marcacao.nsr}</p>
                         )}
@@ -593,15 +847,15 @@ export default function ComprovantesPage() {
                     </div>
                     
                     <div className="flex flex-col gap-2">
-                      <span className="inline-block px-3 py-1 text-xs bg-green-100 text-green-800 rounded-full">
-                        ✅ Registrado
+                      <span className="inline-block px-3 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                        {getOperationalStatus(marcacao).label}
                       </span>
                       
                       <button 
                         onClick={() => generateComprovante(marcacao)}
                         className="px-3 py-1 text-xs bg-blue-100 text-blue-800 rounded-full hover:bg-blue-200 transition-colors"
                       >
-                        📄 Comprovante
+                        📄 Prévia PDF
                       </button>
                     </div>
                   </div>
@@ -615,10 +869,10 @@ export default function ComprovantesPage() {
         <div className="bg-blue-50 rounded-xl p-4 border border-blue-200 mt-6">
           <h3 className="font-medium text-blue-900 mb-2">ℹ️ Sobre os comprovantes</h3>
           <ul className="text-sm text-blue-800 space-y-1">
-            <li>• Todas as marcações são registradas com timestamp preciso e geolocalização</li>
-            <li>• Os dados são protegidos por criptografia e seguem as normas da LGPD</li>
-            <li>• Comprovantes em PDF podem ser gerados para cada marcação</li>
-            <li>• O histórico fica disponível por tempo indeterminado</li>
+            <li>• As prévias usam os registros encontrados para conferência operacional</li>
+            <li>• O PDF gerado nesta tela é uma prévia operacional para conferência interna</li>
+            <li>• Timestamp, localização e evidência são exibidos quando existem no registro</li>
+            <li>• Comprovantes assinados devem ser emitidos por rotina backend auditável</li>
           </ul>
         </div>
       </div>

@@ -1,159 +1,280 @@
-// Regras de segurança refinadas para produção
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Funções auxiliares para validação
-    function isSignedIn() { 
-      return request.auth != null; 
+    function isSignedIn() {
+      return request.auth != null;
     }
-    
-    function isAdmin() { 
-      return isSignedIn() && 'admin' in request.auth.token && request.auth.token.admin == true; 
+
+    function isAdmin() {
+      return isSignedIn() &&
+        'admin' in request.auth.token &&
+        request.auth.token.admin == true;
     }
-    
+
+    function hasPermission(permission) {
+      return isSignedIn() && (
+        isAdmin() ||
+        (
+          'permissions' in request.auth.token &&
+          request.auth.token.permissions is list &&
+          permission in request.auth.token.permissions
+        )
+      );
+    }
+
+    function hasAnyPermission(permissions) {
+      return isSignedIn() && (
+        isAdmin() ||
+        (
+          'permissions' in request.auth.token &&
+          request.auth.token.permissions is list &&
+          request.auth.token.permissions.hasAny(permissions)
+        )
+      );
+    }
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
-    
-    function isValidTimestamp() {
-      return request.resource.data.timestamp is timestamp &&
-             request.resource.data.timestamp > timestamp.date(2024, 1, 1) &&
-             request.resource.data.timestamp <= request.time;
-    }
-    
-    function hasRequiredMarcacaoFields() {
-      return request.resource.data.keys().hasAll(['usuarioId', 'timestamp', 'tipo', 'location']) &&
-             request.resource.data.usuarioId is string &&
-             request.resource.data.tipo in ['entrada', 'saida'];
+
+    function requestOwnerMatches() {
+      return isSignedIn() && (
+        (request.resource.data.keys().hasAny(['userId']) &&
+          request.resource.data.userId == request.auth.uid) ||
+        (request.resource.data.keys().hasAny(['usuarioId']) &&
+          request.resource.data.usuarioId == request.auth.uid) ||
+        (request.resource.data.keys().hasAny(['uid']) &&
+          request.resource.data.uid == request.auth.uid) ||
+        (request.resource.data.keys().hasAny(['authUid']) &&
+          request.resource.data.authUid == request.auth.uid)
+      );
     }
 
-    // Empresas - apenas admin pode modificar, usuários autenticados podem ler
+    function resourceOwnerMatches() {
+      return isSignedIn() && (
+        (resource.data.keys().hasAny(['userId']) &&
+          resource.data.userId == request.auth.uid) ||
+        (resource.data.keys().hasAny(['usuarioId']) &&
+          resource.data.usuarioId == request.auth.uid) ||
+        (resource.data.keys().hasAny(['uid']) &&
+          resource.data.uid == request.auth.uid) ||
+        (resource.data.keys().hasAny(['authUid']) &&
+          resource.data.authUid == request.auth.uid)
+      );
+    }
+
+    function consentOwnerMatches() {
+      return isSignedIn() && (
+        (request.resource.data.keys().hasAny(['uid']) &&
+          request.resource.data.uid == request.auth.uid) ||
+        (request.resource.data.keys().hasAny(['authUid']) &&
+          request.resource.data.authUid == request.auth.uid) ||
+        (request.resource.data.keys().hasAny(['acceptedByUid']) &&
+          request.resource.data.acceptedByUid == request.auth.uid)
+      );
+    }
+
+    function safeUserRoleOnCreate() {
+      return (!request.resource.data.keys().hasAny(['role']) ||
+          request.resource.data.role == 'user') &&
+        (!request.resource.data.keys().hasAny(['admin']) ||
+          request.resource.data.admin == false);
+    }
+
+    function changedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    // Empresas e estabelecimentos ainda podem ser lidos por usuarios autenticados
+    // para geofence/configuracao operacional. Escrita permanece apenas admin.
     match /empresas/{empresaId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
-      
-      // Sub-coleções de empresas
+      allow write: if hasPermission('admin:companies');
+
       match /funcionarios/{userId} {
-        allow read: if isAdmin() || isOwner(userId);
-        allow write: if isAdmin();
+        allow read: if hasAnyPermission(['admin:companies', 'admin:employees', 'admin:users']) || isOwner(userId);
+        allow write: if hasAnyPermission(['admin:companies', 'admin:employees']);
       }
     }
-    
-    // Estabelecimentos
+
     match /estabelecimentos/{estabelecimentoId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if hasPermission('admin:companies');
     }
-    
-    // Usuários (coleção antiga) - mais restritivo
+
     match /usuarios/{userId} {
-      allow read: if isAdmin() || isOwner(userId);
-      allow create: if isAdmin();
-      allow update: if isAdmin() || (isOwner(userId) && 
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['admin', 'empresaId', 'estabelecimentoId']));
-      allow delete: if isAdmin();
+      allow read: if hasAnyPermission(['admin:dashboard', 'admin:users']) || isOwner(userId);
+      allow create: if hasPermission('admin:users') || (isOwner(userId) && safeUserRoleOnCreate());
+      allow update: if hasPermission('admin:users') || (
+        isOwner(userId) &&
+        changedOnly([
+          'name',
+          'displayName',
+          'photoURL',
+          'faceEmbedding',
+          'faceRegisteredAt',
+          'faceLastVerified',
+          'faceVerificationCount',
+          'legal',
+          'updatedAt'
+        ])
+      );
+      allow delete: if hasPermission('admin:users');
     }
-    
-    // Usuários (coleção nova) - para sistema PWA
+
     match /users/{userId} {
-      allow read: if isSignedIn(); // Todos usuários logados podem ler
-      allow create: if isSignedIn(); // Qualquer usuário logado pode criar
-      allow update: if isAdmin() || (isOwner(userId) && 
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])); // Não pode mudar role
-      allow delete: if isAdmin();
+      allow read: if hasAnyPermission(['admin:dashboard', 'admin:users']) || isOwner(userId);
+      allow create: if hasPermission('admin:users') || (isOwner(userId) && safeUserRoleOnCreate());
+      allow update: if hasPermission('admin:users') || (
+        isOwner(userId) &&
+        changedOnly([
+          'name',
+          'displayName',
+          'photoURL',
+          'employeeId',
+          'department',
+          'position',
+          'legal',
+          'updatedAt',
+          'lastLoginAt'
+        ])
+      );
+      allow delete: if hasPermission('admin:users');
     }
-    
-    // Marcações - validação mais rigorosa
+
     match /marcacoes/{marcacaoId} {
-      allow create: if isSignedIn() && 
-        request.resource.data.usuarioId == request.auth.uid &&
-        hasRequiredMarcacaoFields() &&
-        isValidTimestamp();
-      allow read: if isAdmin() || (isSignedIn() && resource.data.usuarioId == request.auth.uid);
-      allow update: if isAdmin(); // Apenas admin pode modificar marcações
-      allow delete: if isAdmin();
+      // Registros de ponto devem ser criados apenas pelo backend autoritativo.
+      allow create: if false;
+      allow read: if hasAnyPermission(['admin:dashboard', 'admin:records', 'admin:reports']) || resourceOwnerMatches();
+      allow update, delete: if hasPermission('admin:records');
     }
-    
-    // Time records - para o novo sistema
+
     match /timeRecords/{recordId} {
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow update, delete: if isAdmin();
+      // Registros de ponto devem ser criados apenas pelo backend autoritativo.
+      allow create: if false;
+      allow read: if hasAnyPermission(['admin:dashboard', 'admin:records', 'admin:reports']) || resourceOwnerMatches();
+      allow update, delete: if hasPermission('admin:records');
     }
-    
-    // Sequências - apenas para sistema interno
+
     match /sequences/{sequenceId} {
-      allow read: if false; // Nunca permitir leitura direta
-      allow write: if false; // Apenas Cloud Functions podem escrever
+      allow read, write: if false;
     }
-    
-    // Atividades/eventos - apenas admin
+
+    match /pointRequests/{requestId} {
+      allow read, write: if false;
+    }
+
     match /atividades/{atividadeId} {
-      allow read, write: if isAdmin();
+      allow read, write: if hasPermission('admin:hr');
     }
-    
-    // Logs de auditoria - apenas leitura para admin
+
     match /auditLogs/{logId} {
       allow read: if isAdmin();
-      allow write: if false; // Apenas Cloud Functions podem escrever
+      allow write: if false;
     }
-    
-    // Assinaturas de documentos - apenas leitura para admin
+
+    match /consentRecords/{recordId} {
+      allow create: if consentOwnerMatches();
+      allow read: if isAdmin() || resourceOwnerMatches();
+      allow update, delete: if false;
+    }
+
     match /documentSignatures/{signatureId} {
       allow read: if isAdmin();
-      allow write: if false; // Apenas Cloud Functions podem escrever
+      allow write: if false;
     }
-    
-    // Webhooks - apenas sistema
+
     match /webhookLogs/{webhookId} {
       allow read: if isAdmin();
-      allow write: if false; // Apenas Cloud Functions podem escrever
+      allow write: if false;
     }
-    
-    // Configurações do sistema - apenas admin
+
     match /systemConfig/{configId} {
-      allow read, write: if isAdmin();
+      allow read: if hasPermission('admin:settings') || (isSignedIn() && configId == 'legalTerms');
+      allow write: if hasPermission('admin:settings');
     }
-    
-    // Feriados
+
     match /feriados/{feriadoId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if hasAnyPermission(['admin:schedules', 'admin:hr']);
     }
-    
-    // Políticas CLT
+
     match /politicas/{politicaId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if hasAnyPermission(['admin:schedules', 'admin:hr']);
     }
-    
-    // Dados de funcionários (face embeddings, etc.)
+
     match /funcionarios/{userId} {
-      allow read: if isAdmin() || isOwner(userId);
-      allow write: if isAdmin() || (isOwner(userId) && 
-        request.resource.data.keys().hasAll(['faceEmbedding']) &&
-        request.resource.data.keys().hasOnly(['faceEmbedding', 'updatedAt']));
+      allow read: if hasAnyPermission(['admin:employees', 'admin:users']) || isOwner(userId);
+      allow create, update, delete: if hasPermission('admin:employees');
     }
-    
-    // Geofencing - Cercas Virtuais
+
     match /geofences/{geofenceId} {
-      allow read: if isSignedIn(); // Todos podem ler geofences
-      allow write: if isAdmin(); // Apenas admin pode criar/editar geofences
+      allow read: if isSignedIn();
+      allow write: if hasPermission('admin:geofences');
     }
-    
-    // Validações de geofencing
+
     match /geofence_validations/{validationId} {
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow update, delete: if isAdmin();
+      allow create: if requestOwnerMatches();
+      allow read: if hasAnyPermission(['admin:records', 'admin:geofences']) || resourceOwnerMatches();
+      allow update, delete: if hasAnyPermission(['admin:records', 'admin:geofences']);
     }
-    
-    // Face embeddings na coleção usuarios para compatibilidade
-    match /usuarios/{userId} {
-      allow update: if isOwner(userId) && request.resource.data.keys().hasAny(['faceEmbedding', 'faceRegisteredAt']);
+
+    match /employees/{employeeId} {
+      allow create: if hasPermission('admin:employees');
+      allow read: if hasAnyPermission([
+          'admin:dashboard',
+          'admin:companies',
+          'admin:employees',
+          'admin:hr',
+          'admin:records',
+          'admin:reports',
+          'admin:schedules',
+          'admin:users'
+        ]) || resourceOwnerMatches();
+      allow update, delete: if hasPermission('admin:employees');
     }
-    
-    // Negar acesso a qualquer outro documento não especificado
+
+    match /employee_schedules/{scheduleId} {
+      allow create, update, delete: if hasPermission('admin:schedules');
+      allow read: if isSignedIn();
+    }
+
+    match /point_analysis/{analysisId} {
+      allow create: if hasAnyPermission(['admin:hr', 'admin:records']) || requestOwnerMatches();
+      allow read: if hasAnyPermission(['admin:hr', 'admin:records']) || resourceOwnerMatches();
+      allow update, delete: if hasAnyPermission(['admin:hr', 'admin:records']);
+    }
+
+    match /holidays/{holidayId} {
+      allow create, update, delete: if hasAnyPermission(['admin:schedules', 'admin:hr']);
+      allow read: if isSignedIn();
+    }
+
+    match /vacation_requests/{requestId} {
+      allow create: if hasPermission('admin:hr') || requestOwnerMatches();
+      allow read: if hasPermission('admin:hr') || resourceOwnerMatches();
+      allow update, delete: if hasPermission('admin:hr');
+    }
+
+    match /medical_leave_requests/{requestId} {
+      allow create: if hasPermission('admin:hr') || requestOwnerMatches();
+      allow read: if hasPermission('admin:hr') || resourceOwnerMatches();
+      allow update, delete: if hasPermission('admin:hr');
+    }
+
+    match /geofence_violations/{violationId} {
+      allow create: if requestOwnerMatches();
+      allow read: if hasAnyPermission(['admin:records', 'admin:geofences']) || resourceOwnerMatches();
+      allow update, delete: if hasAnyPermission(['admin:records', 'admin:geofences']);
+    }
+
+    match /review_records/{reviewId} {
+      allow create: if hasPermission('admin:records') || requestOwnerMatches();
+      allow read: if hasPermission('admin:records') || resourceOwnerMatches();
+      allow update, delete: if hasPermission('admin:records');
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

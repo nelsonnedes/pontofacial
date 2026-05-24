@@ -14,7 +14,7 @@ export default function ConsoleOptimizerClient() {
     }
 
     // Importar e ativar o console optimizer dinamicamente
-    import('../lib/console-optimizer').then((module) => {
+    import('../lib/console-optimizer').then((_module) => {
       // O optimizer é inicializado automaticamente na importação
       console.log('🎛️ Console Optimizer Client ativado via componente')
     }).catch((error) => {

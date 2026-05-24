@@ -5,6 +5,7 @@ import OnlineStatus from './OnlineStatus';
 import BackgroundSyncProvider from './BackgroundSyncProvider';
 import ClientRegisterSW from './ClientRegisterSW';
 import FaceAPIProvider from './FaceAPIProvider';
+import PwaInstall from './PwaInstall';
 
 interface ClientProvidersProps {
   children: ReactNode;
@@ -36,6 +37,7 @@ export default function ClientProviders({ children }: ClientProvidersProps) {
         <OnlineStatus />
       </BackgroundSyncProvider>
       <ClientRegisterSW />
+      <PwaInstall />
     </FaceAPIProvider>
   );
 }

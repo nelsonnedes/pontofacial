@@ -1,45 +1,76 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+
+const DEFAULT_SETTINGS = {
+  systemName: 'Sistema de Ponto Facial',
+  allowOfflineMode: true,
+  faceApiTimeout: 45,
+  geofencingEnabled: false,
+  autoBackup: true,
+  maxRetryAttempts: 3,
+  sessionTimeout: 24
+};
 
 export default function AdminSettingsPage() {
-  const [settings, setSettings] = useState({
-    systemName: 'Sistema de Ponto Facial',
-    allowOfflineMode: true,
-    faceApiTimeout: 45,
-    geofencingEnabled: false,
-    autoBackup: true,
-    maxRetryAttempts: 3,
-    sessionTimeout: 24
-  });
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
 
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        setLoading(true);
+        const configRef = doc(db, 'systemConfig', 'appSettings');
+        const snapshot = await getDoc(configRef);
+
+        if (snapshot.exists()) {
+          setSettings(prev => ({ ...prev, ...snapshot.data() }));
+          setStatusMessage('Configurações carregadas do Firestore.');
+        } else {
+          setStatusMessage('Usando padrões locais. Clique em salvar para publicar no Firestore.');
+        }
+
+        setLastLoadedAt(new Date());
+      } catch (error) {
+        console.error('Erro ao carregar configurações:', error);
+        setStatusMessage('Não foi possível confirmar as configurações no Firestore.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSettings();
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
+    setStatusMessage('');
+
     try {
-      // Simular salvamento
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      alert('✅ Configurações salvas com sucesso!');
+      const configRef = doc(db, 'systemConfig', 'appSettings');
+      await setDoc(configRef, {
+        ...settings,
+        updatedAt: serverTimestamp(),
+        source: 'admin-settings'
+      }, { merge: true });
+      setStatusMessage('Configurações salvas no Firestore.');
     } catch (error) {
-      alert('❌ Erro ao salvar configurações.');
+      console.error('Erro ao salvar configurações:', error);
+      setStatusMessage('Erro ao salvar configurações no Firestore.');
     } finally {
       setSaving(false);
     }
   };
 
   const handleReset = () => {
-    if (confirm('Tem certeza que deseja restaurar as configurações padrão?')) {
-      setSettings({
-        systemName: 'Sistema de Ponto Facial',
-        allowOfflineMode: true,
-        faceApiTimeout: 45,
-        geofencingEnabled: false,
-        autoBackup: true,
-        maxRetryAttempts: 3,
-        sessionTimeout: 24
-      });
-    }
+    setSettings(DEFAULT_SETTINGS);
+    setStatusMessage('Padrões aplicados na tela. Clique em salvar para publicar.');
   };
 
   return (
@@ -48,9 +79,15 @@ export default function AdminSettingsPage() {
       <div>
         <h2 className="text-3xl font-bold text-gray-900">⚙️ Configurações</h2>
         <p className="text-gray-600 mt-1">
-          Configurar parâmetros do sistema
+          Configurar parâmetros persistidos do sistema
         </p>
       </div>
+
+      {statusMessage && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          {statusMessage}
+        </div>
+      )}
 
       {/* Configurações Gerais */}
       <div className="bg-white rounded-lg shadow-sm border">
@@ -139,6 +176,9 @@ export default function AdminSettingsPage() {
           <h3 className="text-lg font-medium text-gray-900">
             🔧 Sistema
           </h3>
+          <p className="mt-1 text-xs text-gray-500">
+            Estes parâmetros ficam persistidos no Firestore; a aplicação operacional depende dos módulos conectados a cada regra.
+          </p>
         </div>
         <div className="p-6 space-y-4">
           <div className="flex items-center justify-between">
@@ -181,7 +221,7 @@ export default function AdminSettingsPage() {
                 Backup Automático
               </label>
               <p className="text-xs text-gray-500">
-                Fazer backup automático dos dados diariamente
+                Reserva de configuração para rotina automatizada no backend
               </p>
             </div>
             <input
@@ -214,10 +254,17 @@ export default function AdminSettingsPage() {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Status:</span>
-              <span className="font-medium text-green-600">✅ Online</span>
+              <span className="text-gray-600">Configuração:</span>
+              <span className="font-medium text-blue-600">
+                {loading ? 'Carregando' : lastLoadedAt ? 'Verificada' : 'Não verificada'}
+              </span>
             </div>
           </div>
+          {lastLoadedAt && (
+            <p className="mt-3 text-xs text-gray-500">
+              Última leitura: {lastLoadedAt.toLocaleString('pt-BR')}
+            </p>
+          )}
         </div>
       </div>
 

@@ -14,15 +14,19 @@ interface TimeRecordData {
     address?: string;
   };
   faceEmbedding?: string;
+  metadata?: Record<string, any>;
 }
 
 interface QueueStats {
   pending: number;
+  syncing: number;
+  synced: number;
   processing: number;
   completed: number;
   failed: number;
   totalTimeRecords: number;
   unsyncedTimeRecords: number;
+  syncedTimeRecords: number;
 }
 
 interface UseOfflineTimeRecordsReturn {
@@ -50,7 +54,9 @@ interface UseOfflineTimeRecordsReturn {
 }
 
 export function useOfflineTimeRecords(): UseOfflineTimeRecordsReturn {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isOnline, setIsOnline] = useState(() => (
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  ));
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
@@ -158,7 +164,8 @@ export function useOfflineTimeRecords(): UseOfflineTimeRecordsReturn {
       // Obter informações de rede e bateria
       const metadata: any = {
         offline: !navigator.onLine,
-        networkType: (navigator as any).connection?.effectiveType || 'unknown'
+        networkType: (navigator as any).connection?.effectiveType || 'unknown',
+        ...(data.metadata || {})
       };
 
       // Tentar obter nível da bateria (se disponível)
@@ -171,7 +178,7 @@ export function useOfflineTimeRecords(): UseOfflineTimeRecordsReturn {
         // Ignorar erro de bateria
       }
 
-      // Tentar obter offset NTP (simulado)
+      // Tentar obter offset NTP pelo endpoint do Firebase Hosting/Functions
       try {
         metadata.ntpOffset = await getNTPOffset();
       } catch (err) {
@@ -257,23 +264,26 @@ export function useOfflineTimeRecords(): UseOfflineTimeRecordsReturn {
 
       setIsSyncing(true);
       
-      // Tentar usar background sync se disponível
-      if (backgroundSync.isBackgroundSyncSupported && isOnline) {
+      // Tentar usar background sync se disponível e habilitado
+      if (!DISABLE_BACKGROUND_SYNC && backgroundSync.isBackgroundSyncSupported && isOnline) {
         backgroundSync.requestBackgroundSync();
         // Aguardar um pouco para o background sync processar
         await new Promise(resolve => setTimeout(resolve, 1000));
       } else {
         // Fallback para sincronização direta
-        await queueManager.forceSyncAll();
-        setIsSyncing(false);
+        const result = await queueManager.forceSyncAll();
+        if (!result.success) {
+          throw new Error('Ainda há registros pendentes ou com falha na fila');
+        }
         
         // Aguardar um pouco para a sincronização começar
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       // Atualizar estatísticas
       await getQueueStats();
       await getUnsyncedRecords();
+      setIsSyncing(false);
 
       return {
         success: true,
@@ -347,10 +357,9 @@ export function useOfflineTimeRecords(): UseOfflineTimeRecordsReturn {
   };
 }
 
-// Função auxiliar para obter offset NTP (simulada)
+// Função auxiliar para obter offset NTP
 async function getNTPOffset(): Promise<number> {
   try {
-    // Implementação simulada - em produção, usar um serviço NTP real
     const start = Date.now();
     const response = await fetch('/api/time/ntp', {
       method: 'GET',

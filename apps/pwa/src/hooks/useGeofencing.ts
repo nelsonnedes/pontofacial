@@ -1,405 +1,420 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  collection, 
-  doc, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  orderBy,
-  onSnapshot,
-  increment
-} from 'firebase/firestore';
+import { collection, addDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
-import {
-  Geofence,
-  Location,
-  PointType,
-  GeofenceValidation,
-  GeofenceStats,
-  validateLocationAgainstFences,
-  createGeofence as createGeofenceHelper,
-  calculateGeofenceStats
-} from '@/lib/geofencing';
 
-interface UseGeofencingReturn {
-  // Estado
-  geofences: Geofence[];
-  isLoading: boolean;
-  error: string | null;
-  stats: GeofenceStats | null;
-  
-  // Validação
-  validateLocation: (location: Location, pointType: PointType) => Promise<GeofenceValidation>;
-  
-  // CRUD (Admin)
-  createGeofence: (
-    name: string, 
-    center: Location, 
-    radius: number, 
-    options?: Partial<Geofence>
-  ) => Promise<string>;
-  updateGeofence: (id: string, updates: Partial<Geofence>) => Promise<void>;
-  deleteGeofence: (id: string) => Promise<void>;
-  toggleGeofence: (id: string, active: boolean) => Promise<void>;
-  
-  // Utilitários
-  refreshGeofences: () => Promise<void>;
-  recordValidation: (validation: GeofenceValidation) => Promise<void>;
-  clearError: () => void;
+interface GeofenceConfig {
+  latitude: number;
+  longitude: number;
+  radius: number; // metros
+  name: string;
 }
 
-export function useGeofencing(): UseGeofencingReturn {
-  const [geofences, setGeofences] = useState<Geofence[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<GeofenceStats | null>(null);
-  const [validationHistory, setValidationHistory] = useState<GeofenceValidation[]>([]);
-  
+interface GeolocationData {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  timestamp: number;
+}
+
+interface GeofencingState {
+  currentLocation: GeolocationData | null;
+  isInsideFence: boolean | null;
+  isLoadingLocation: boolean;
+  locationError: string | null;
+  distanceFromFence: number | null;
+}
+
+interface GeofenceViolation {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  timestamp: Date;
+  attemptedAction: 'marcar_ponto';
+  pontoType: string;
+  location: GeolocationData;
+  fence: GeofenceConfig;
+  distanceFromFence: number;
+  deviceInfo: string;
+}
+
+/**
+ * Hook profissional para controle de geofencing
+ * - Busca cerca ativa do Firestore
+ * - Monitora localização em tempo real
+ * - Calcula distância da cerca geográfica
+ * - Registra violações automaticamente
+ * - Integra com sistema de ocorrências
+ */
+export function useGeofencing() {
   const { user } = useAuth();
-
-  // Configuração baseada no ambiente
-  const isProduction = process.env.NODE_ENV === 'production';
   
-  useEffect(() => {
-    if (!isProduction) {
-      console.log('🚫 Geofencing desabilitado em desenvolvimento');
-      setGeofences([]);
-      setIsLoading(false);
-      setError(null);
-      setStats(null);
-      return;
-    } else {
-      console.log('🚀 Geofencing habilitado para produção');
-    }
-  }, [isProduction]);
-
-  // Coleções do Firebase
-  const geofencesCollection = collection(db, 'geofences');
-  const validationsCollection = collection(db, 'geofence_validations');
-
-  // Carregar cercas virtuais em tempo real
-  useEffect(() => {
-    if (!isProduction) {
-      console.log('🚫 Geofencing desabilitado em desenvolvimento - não fazendo queries Firebase');
-      setGeofences([]);
-      setIsLoading(false);
-      setError(null);
-      setStats(null);
-      return;
-    }
-
-    if (!user) {
-      setGeofences([]);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    console.log('🔄 Carregando cercas virtuais...');
-
-    // Query para cercas ativas, ordenadas por nome
-    const q = query(
-      geofencesCollection,
-      orderBy('name', 'asc')
-    );
-
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        const fencesData: Geofence[] = [];
-        
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          fencesData.push({
-            id: doc.id,
-            ...data
-          } as Geofence);
-        });
-
-        console.log(`✅ ${fencesData.length} cercas virtuais carregadas`);
-        setGeofences(fencesData);
-        setIsLoading(false);
-        setError(null);
-
-        // Calcular estatísticas
-        if (validationHistory.length > 0) {
-          const newStats = calculateGeofenceStats(fencesData, validationHistory);
-          setStats(newStats);
-        }
-      },
-      (error) => {
-        console.error('❌ Erro ao carregar cercas virtuais:', error);
-        
-        // Tratamento específico para permissões insuficientes
-        if (error.code === 'permission-denied' || error.message?.includes('insufficient permissions')) {
-          console.warn('⚠️ Permissões insuficientes para geofencing - sistema funcionará sem cercas virtuais');
-          setError(null); // Não tratamos isso como erro fatal
-          setGeofences([]); // Usar lista vazia
-          setStats(null);
-          setIsLoading(false);
-          return;
-        }
-        
-        setError('Erro ao carregar cercas virtuais');
-        setIsLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [user]);
-
-  // Validar localização contra cercas ativas
-  const validateLocation = useCallback(async (
-    location: Location,
-    pointType: PointType
-  ): Promise<GeofenceValidation> => {
-    if (!isProduction) {
-      return {
-        isValid: true,
-        message: 'Geofencing desabilitado em desenvolvimento',
-        severity: 'success' as const,
-        allowMarking: true
-      };
-    }
-
-    console.log(`🌍 Validando localização para ponto tipo: ${pointType}`);
-    
+  const [state, setState] = useState<GeofencingState>({
+    currentLocation: null,
+    isInsideFence: null,
+    isLoadingLocation: true,
+    locationError: null,
+    distanceFromFence: null,
+  });
+  
+  // ✅ CORREÇÃO CRÍTICA: Estado para cerca ativa do Firestore
+  const [activeFence, setActiveFence] = useState<GeofenceConfig | null>(null);
+  const [isLoadingFence, setIsLoadingFence] = useState(true);
+  
+  // ✅ NOVA FUNÇÃO: Carregar cerca ativa do Firestore
+  const loadActiveFence = useCallback(async () => {
     try {
-      // Filtrar apenas cercas ativas
-      const activeFences = geofences.filter(fence => fence.active);
+      console.log('📡 Buscando cerca ativa no Firestore...');
+      setIsLoadingFence(true);
       
-      if (activeFences.length === 0) {
-        const validation: GeofenceValidation = {
-          isValid: true,
-          message: 'Nenhuma cerca virtual ativa configurada',
-          severity: 'success',
-          allowMarking: true
+      // ✅ PRIMEIRO: Listar TODAS as cercas para debug
+      console.log('🔍 DEBUG: Listando TODAS as cercas existentes...');
+      const allFencesRef = collection(db, 'geofences');
+      const allQuery = query(allFencesRef, orderBy('createdAt', 'desc'));
+      const allSnapshot = await getDocs(allQuery);
+      
+      console.log(`🔍 Total de cercas encontradas: ${allSnapshot.size}`);
+      allSnapshot.docs.forEach((doc, index) => {
+        const data = doc.data();
+        console.log(`🔍 Cerca ${index + 1}:`, {
+          id: doc.id,
+          name: data.name,
+          active: data.active,
+          latitude: data.center?.latitude || data.latitude,
+          longitude: data.center?.longitude || data.longitude,
+          radius: data.radius,
+          createdAt: data.createdAt?.toDate?.()?.toISOString?.() || 'sem data'
+        });
+      });
+      
+      // ✅ SEGUNDO: Buscar cercas ativas especificamente (SEM orderBy para evitar índice composto)
+      const fencesRef = collection(db, 'geofences');
+      const q = query(
+        fencesRef,
+        where('active', '==', true),
+        limit(1)
+      );
+      
+      console.log('🔍 Buscando cercas com active === true...');
+      const querySnapshot = await getDocs(q);
+      console.log(`🔍 Cercas ativas encontradas: ${querySnapshot.size}`);
+      
+      if (!querySnapshot.empty) {
+        const fenceDoc = querySnapshot.docs[0];
+        const fenceData = fenceDoc.data();
+        
+        console.log('🔍 Dados da cerca ativa encontrada:', {
+          id: fenceDoc.id,
+          raw: fenceData,
+          center: fenceData.center,
+          latitude: fenceData.latitude,
+          longitude: fenceData.longitude,
+          active: fenceData.active
+        });
+        
+        const fence: GeofenceConfig = {
+          latitude: fenceData.center?.latitude || fenceData.latitude,
+          longitude: fenceData.center?.longitude || fenceData.longitude,
+          radius: fenceData.radius || 100,
+          name: fenceData.name || 'Cerca da Empresa'
         };
         
-        // Registrar validação
-        await recordValidation(validation);
-        return validation;
+        setActiveFence(fence);
+        console.log('✅ Cerca ativa definida:', fence.name, `${fence.latitude}, ${fence.longitude} (${fence.radius}m)`);
+      } else {
+        setActiveFence(null);
+        console.warn('⚠️ NENHUMA cerca ativa encontrada; marcação de ponto bloqueada por segurança');
       }
-
-      // Usar função de validação do geofencing.ts
-      const validation = validateLocationAgainstFences(location, activeFences, pointType);
-      
-      console.log('📍 Resultado da validação:', validation);
-      
-      // Registrar validação no histórico
-      await recordValidation(validation);
-      
-      // Atualizar estatísticas da cerca se foi usada
-      if (validation.fence) {
-        await updateDoc(doc(db, 'geofences', validation.fence.id), {
-          totalMarkings: increment(1),
-          lastUsed: Date.now()
-        });
-      }
-      
-      return validation;
-      
-    } catch (err) {
-      console.error('❌ Erro na validação de geofencing:', err);
-      const errorValidation: GeofenceValidation = {
-        isValid: false,
-        message: 'Erro interno na validação de localização',
-        severity: 'error',
-        allowMarking: true // Permitir em caso de erro do sistema
-      };
-      
-      await recordValidation(errorValidation);
-      return errorValidation;
+    } catch (error) {
+      console.error('❌ Erro ao buscar cerca ativa:', error);
+      console.error('❌ Stack trace:', error instanceof Error ? error.stack : undefined);
+      setActiveFence(null);
+      setState(prev => ({
+        ...prev,
+        isLoadingLocation: false,
+        locationError: 'Falha ao carregar cerca ativa'
+      }));
+    } finally {
+      setIsLoadingFence(false);
     }
-  }, [geofences, isProduction]);
+  }, []);
+  
+  // ✅ Carregar cerca na inicialização
+  useEffect(() => {
+    loadActiveFence();
+  }, [loadActiveFence]);
 
-  // Criar nova cerca virtual (Admin)
-  const createGeofence = useCallback(async (
-    name: string,
-    center: Location,
-    radius: number,
-    options: Partial<Geofence> = {}
-  ): Promise<string> => {
-    if (!user) {
-      throw new Error('Usuário não autenticado');
-    }
+  // Calcular distância entre dois pontos (Haversine)
+  const calculateDistance = useCallback((
+    lat1: number, 
+    lon1: number, 
+    lat2: number, 
+    lon2: number
+  ): number => {
+    const R = 6371000; // Raio da Terra em metros
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; // Distância em metros
+  }, []);
 
-    try {
-      console.log(`🎯 Criando cerca virtual: ${name}`);
-      
-      const newGeofence = createGeofenceHelper(name, center, radius, user.uid);
-      
-      // Aplicar opções customizadas
-      const geofenceToCreate = {
-        ...newGeofence,
-        ...options,
-        createdBy: user.uid, // Sempre manter o criador correto
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-
-      const docRef = await addDoc(geofencesCollection, geofenceToCreate);
-      
-      console.log(`✅ Cerca virtual criada com ID: ${docRef.id}`);
-      return docRef.id;
-      
-    } catch (err) {
-      console.error('❌ Erro ao criar cerca virtual:', err);
-      setError('Erro ao criar cerca virtual');
-      throw err;
-    }
-  }, [user]);
-
-  // Atualizar cerca virtual (Admin)
-  const updateGeofence = useCallback(async (
-    id: string,
-    updates: Partial<Geofence>
-  ): Promise<void> => {
-    if (!user) {
-      throw new Error('Usuário não autenticado');
-    }
-
-    try {
-      console.log(`📝 Atualizando cerca virtual: ${id}`);
-      
-      const updateData = {
-        ...updates,
-        updatedAt: Date.now()
-      };
-
-      await updateDoc(doc(db, 'geofences', id), updateData);
-      
-      console.log(`✅ Cerca virtual atualizada: ${id}`);
-      
-    } catch (err) {
-      console.error('❌ Erro ao atualizar cerca virtual:', err);
-      setError('Erro ao atualizar cerca virtual');
-      throw err;
-    }
-  }, [user]);
-
-  // Deletar cerca virtual (Admin)
-  const deleteGeofence = useCallback(async (id: string): Promise<void> => {
-    if (!user) {
-      throw new Error('Usuário não autenticado');
-    }
-
-    try {
-      console.log(`🗑️ Deletando cerca virtual: ${id}`);
-      
-      await deleteDoc(doc(db, 'geofences', id));
-      
-      console.log(`✅ Cerca virtual deletada: ${id}`);
-      
-    } catch (err) {
-      console.error('❌ Erro ao deletar cerca virtual:', err);
-      setError('Erro ao deletar cerca virtual');
-      throw err;
-    }
-  }, [user]);
-
-  // Ativar/Desativar cerca virtual (Admin)
-  const toggleGeofence = useCallback(async (
-    id: string,
-    active: boolean
-  ): Promise<void> => {
-    await updateGeofence(id, { active });
-  }, [updateGeofence]);
-
-  // Registrar validação no histórico
-  const recordValidation = useCallback(async (
-    validation: GeofenceValidation
-  ): Promise<void> => {
+  // Registrar violação de geofencing
+  const registerViolation = useCallback(async (
+    action: string,
+    pontoType: string,
+    location: GeolocationData,
+    distance: number
+  ) => {
     if (!user) return;
 
     try {
-      const validationRecord = {
+      const violation: GeofenceViolation = {
         userId: user.uid,
-        timestamp: Date.now(),
-        isValid: validation.isValid,
-        fenceId: validation.fence?.id || null,
-        fenceName: validation.fence?.name || null,
-        distance: validation.distance || null,
-        message: validation.message,
-        severity: validation.severity,
-        allowMarking: validation.allowMarking
+        userName: user.displayName || 'Usuário sem nome',
+        userEmail: user.email || 'Email não disponível',
+        timestamp: new Date(),
+        attemptedAction: action as any,
+        pontoType,
+        location,
+        fence: activeFence!,
+        distanceFromFence: distance,
+        deviceInfo: `${navigator.userAgent} | ${window.screen.width}x${window.screen.height}`
       };
 
-      await addDoc(validationsCollection, validationRecord);
+      await addDoc(collection(db, 'geofence_violations'), violation);
+      console.log('🚨 Violação de geofencing registrada:', violation);
       
-      // Atualizar histórico local para estatísticas
-      setValidationHistory(prev => [...prev.slice(-99), validation]); // Manter últimos 100
-      
-    } catch (err) {
-      console.error('❌ Erro ao registrar validação:', err);
-      // Não propagar erro - é apenas para estatísticas
+    } catch (error) {
+      console.error('❌ Erro ao registrar violação:', error);
     }
-  }, [user]);
+  }, [user, activeFence]);
 
-  // Recarregar cercas virtuais
-  const refreshGeofences = useCallback(async (): Promise<void> => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      const snapshot = await getDocs(query(geofencesCollection, orderBy('name', 'asc')));
-      const fencesData: Geofence[] = [];
-      
-      snapshot.forEach((doc) => {
-        fencesData.push({ id: doc.id, ...doc.data() } as Geofence);
+  // Atualizar localização
+  const updateLocation = useCallback((position: GeolocationPosition) => {
+    const location: GeolocationData = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+      timestamp: Date.now(),
+    };
+
+    if (!activeFence) {
+      console.warn('⚠️ Nenhuma cerca ativa - bloqueando marcação');
+      setState({
+        currentLocation: location,
+        isInsideFence: false,
+        isLoadingLocation: false,
+        locationError: 'Nenhuma cerca ativa configurada',
+        distanceFromFence: null,
       });
+      return;
+    }
 
-      setGeofences(fencesData);
-      console.log(`🔄 ${fencesData.length} cercas virtuais recarregadas`);
+    // Calcular distância da cerca ativa
+    const distance = calculateDistance(
+      location.latitude,
+      location.longitude,
+      activeFence.latitude,
+      activeFence.longitude
+    );
+
+    const isInside = distance <= activeFence.radius;
+
+    setState({
+      currentLocation: location,
+      isInsideFence: isInside,
+      isLoadingLocation: false,
+      locationError: null,
+      distanceFromFence: distance,
+    });
+
+    console.log(`📍 Localização atualizada: ${Math.round(distance)}m da cerca "${activeFence.name}" (${isInside ? 'DENTRO' : 'FORA'})`);
+  }, [activeFence, calculateDistance]);
+
+  // ✅ INICIALIZAR GEOLOCALIZAÇÃO: Só após carregar cerca ou determinar que não há cerca
+  useEffect(() => {
+    // ✅ CRÍTICO: Só iniciar geolocalização após carregar cerca
+    if (isLoadingFence) {
+      console.log('⏳ Aguardando carregamento de cerca...');
+      return;
+    }
+    
+    if (!navigator.geolocation) {
+      setState(prev => ({
+        ...prev,
+        isLoadingLocation: false,
+        locationError: 'Geolocalização não suportada',
+      }));
+      return;
+    }
+    
+    console.log('📍 Iniciando geolocalização...');
+    console.log('🏢 Cerca ativa:', activeFence ? `${activeFence.name} (${activeFence.latitude}, ${activeFence.longitude})` : 'Nenhuma');
+
+    const options: PositionOptions = {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 30000, // Cache por 30 segundos
+    };
+
+    // Obter localização inicial
+    navigator.geolocation.getCurrentPosition(
+      updateLocation,
+      (error) => {
+        console.error('❌ Erro de geolocalização:', error);
+        let errorMessage = 'Erro ao obter localização';
+        
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Permissão de localização negada';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Localização indisponível';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Timeout na obtenção da localização';
+            break;
+        }
+        
+        setState(prev => ({
+          ...prev,
+          isLoadingLocation: false,
+          locationError: errorMessage,
+        }));
+      },
+      options
+    );
+
+    // Monitorar mudanças de localização
+    const watchId = navigator.geolocation.watchPosition(
+      updateLocation,
+      (error) => {
+        console.warn('⚠️ Erro no monitoramento:', error);
+      },
+      {
+        ...options,
+        maximumAge: 60000, // Update a cada minuto
+      }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [isLoadingFence, activeFence]); // ✅ CORREÇÃO: Removido updateLocation das dependências
+
+  // Função para tentar marcar ponto (com validação de geofencing)
+  const attemptPointMarking = useCallback(async (pontoType: string): Promise<{
+    allowed: boolean;
+    reason?: string;
+  }> => {
+    const { isInsideFence, currentLocation, distanceFromFence } = state;
+
+    // Se ainda está carregando localização
+    if (state.isLoadingLocation) {
+      return {
+        allowed: false,
+        reason: 'Aguardando localização...'
+      };
+    }
+
+    // Se houve erro na localização
+    if (state.locationError) {
+      return {
+        allowed: false,
+        reason: `Erro de localização: ${state.locationError}`
+      };
+    }
+
+    if (!activeFence) {
+      return {
+        allowed: false,
+        reason: 'Nenhuma cerca ativa configurada'
+      };
+    }
+
+    if (!currentLocation) {
+      return {
+        allowed: false,
+        reason: 'Localização atual indisponível'
+      };
+    }
+
+    if (currentLocation.accuracy > 100) {
+      return {
+        allowed: false,
+        reason: `Precisão de GPS insuficiente (${Math.round(currentLocation.accuracy)}m)`
+      };
+    }
+
+    // Se está fora da cerca geográfica
+    if (isInsideFence !== true && distanceFromFence !== null) {
+      // Registrar violação
+      await registerViolation('marcar_ponto', pontoType, currentLocation, distanceFromFence);
       
-    } catch (err) {
-      console.error('❌ Erro ao recarregar cercas:', err);
-      setError('Erro ao recarregar cercas virtuais');
-    } finally {
-      setIsLoading(false);
+      return {
+        allowed: false,
+        reason: `Você está fora da área permitida (${Math.round(distanceFromFence)}m de distância)`
+      };
+    }
+
+    // Tudo OK para marcar ponto
+    return { allowed: true };
+  }, [state, activeFence, registerViolation]);
+
+  // ✅ FUNÇÃO UTILITÁRIA: Listar e ativar cercas
+  const debugFences = useCallback(async () => {
+    try {
+      const allFencesRef = collection(db, 'geofences');
+      const allQuery = query(allFencesRef, orderBy('createdAt', 'desc'));
+      const allSnapshot = await getDocs(allQuery);
+      
+      console.log('=== TODAS AS CERCAS NO FIRESTORE ===');
+      const fences: Array<{
+        id: string;
+        name: any;
+        active: any;
+        latitude: any;
+        longitude: any;
+        radius: any;
+        createdAt: any;
+      }> = [];
+      allSnapshot.docs.forEach((doc, index) => {
+        const data = doc.data();
+        const fence = {
+          id: doc.id,
+          name: data.name,
+          active: data.active,
+          latitude: data.center?.latitude || data.latitude,
+          longitude: data.center?.longitude || data.longitude,
+          radius: data.radius,
+          createdAt: data.createdAt?.toDate?.()?.toISOString?.() || 'sem data'
+        };
+        fences.push(fence);
+        console.log(`🔍 Cerca ${index + 1}:`, fence);
+      });
+      
+      return fences;
+    } catch (error) {
+      console.error('❌ Erro ao listar cercas:', error);
+      return [];
     }
   }, []);
 
-  // Limpar erro
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
-
   return {
-    // Estado
-    geofences,
-    isLoading,
-    error,
-    stats,
-    
-    // Validação
-    validateLocation,
-    
-    // CRUD
-    createGeofence,
-    updateGeofence,
-    deleteGeofence,
-    toggleGeofence,
-    
-    // Utilitários
-    refreshGeofences,
-    recordValidation,
-    clearError
-  };
-}
-
-// Hook específico para validação simples (não admin)
-export function useGeofenceValidation() {
-  const { validateLocation, geofences, isLoading } = useGeofencing();
-  
-  return {
-    validateLocation,
-    hasGeofences: geofences.length > 0,
-    isLoading
+    ...state,
+    fence: activeFence, // ✅ Retornar cerca ativa do Firestore
+    isLoadingFence, // ✅ Indicar se ainda está carregando cerca
+    attemptPointMarking,
+    refreshLocation: () => {
+      setState(prev => ({ ...prev, isLoadingLocation: true }));
+    },
+    reloadFence: loadActiveFence, // ✅ Permitir recarregar cerca manualmente
+    debugFences // ✅ Função para debug das cercas
   };
 }

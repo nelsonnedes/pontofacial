@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { faceRecognition } from '@/lib/face-recognition';
+import { optimizedFaceRecognition } from '@/lib/face-recognition-optimized';
 import { useFaceAPIContext } from '@/components/FaceAPIProvider';
 import { useFaceAPIReady } from './FaceAPIProvider';
+import { canUseManualLivenessBypass, isStrictProduction } from '@/lib/production-guardrails';
 
 interface LivenessChallenge {
   id: string;
@@ -76,14 +77,23 @@ export default function LivenessStep({
   
   // Hook para verificar se Face API está pronto
   const faceAPIReady = useFaceAPIReady();
-  const { initializing: faceAPILoading, error: faceAPIError } = useFaceAPIContext();
+  const { initializing: faceAPILoading } = useFaceAPIContext();
 
   const currentChallenge = CHALLENGES[currentChallengeIndex];
   const totalChallenges = CHALLENGES.length;
   const progress = ((currentChallengeIndex + (timeRemaining > 0 ? 1 : 0)) / totalChallenges) * 100;
+  const manualBypassAllowed = canUseManualLivenessBypass();
+  const strictProduction = isStrictProduction();
 
   // Iniciar teste de vivacidade
   const startLivenessTest = () => {
+    if (strictProduction && (!autoDetection || !videoElement)) {
+      const message = 'Liveness automatico com camera e obrigatorio em producao.';
+      setDetectionStatus(message);
+      onError?.(message);
+      return;
+    }
+
     setIsActive(true);
     setCurrentChallengeIndex(0);
     setCompletedChallenges([]);
@@ -131,9 +141,9 @@ export default function LivenessStep({
   };
 
   // Estado para rastreamento de movimentos
-  const [previousExpressions, setPreviousExpressions] = useState<any>(null);
+  const [, setPreviousExpressions] = useState<any>(null);
   const [blinkDetectionState, setBlinkDetectionState] = useState({ wasOpen: true, blinkCount: 0 });
-  const [headPositionHistory, setHeadPositionHistory] = useState<Array<{x: number, y: number, timestamp: number}>>([]);
+  const [, setHeadPositionHistory] = useState<Array<{x: number, y: number, timestamp: number}>>([]);
 
   // Detecção facial aprimorada usando Face API
   const performFaceDetection = async () => {
@@ -154,7 +164,7 @@ export default function LivenessStep({
       setDetectionStatus(`Detectando: ${challenge.instruction}`);
 
       // Detectar expressões faciais e landmarks
-      const detectionResult = await faceRecognition.detectFaces(videoElement);
+      const detectionResult = await optimizedFaceRecognition.detectFaces(videoElement);
       
       if (!detectionResult || detectionResult.length === 0) {
         setDetectionStatus('Posicione seu rosto na câmera');
@@ -352,11 +362,12 @@ export default function LivenessStep({
         setTimeRemaining(prev => {
           const newTime = prev - 1;
           if (newTime <= 0) {
-            if (!autoDetection) {
-              // Se não há detecção automática, avançar automaticamente
-              nextChallenge();
-            }
-            // Se há detecção automática, ela cuidará do avanço
+            const message = 'Tempo esgotado sem confirmar vivacidade.';
+            setDetectionStatus(message);
+            failCurrentChallenge();
+            stopLivenessTest();
+            onAllChallengesComplete?.(false);
+            return 0;
           }
           return newTime;
         });
@@ -473,8 +484,6 @@ export default function LivenessStep({
             {CHALLENGES.map((challenge, index) => {
               const isCompleted = completedChallenges.includes(challenge.id);
               const isCurrent = index === currentChallengeIndex && timeRemaining > 0;
-              const isPending = index > currentChallengeIndex;
-              
               return (
                 <div 
                   key={challenge.id}
@@ -513,13 +522,15 @@ export default function LivenessStep({
           </button>
         ) : isActive ? (
           <>
-            <button
-              onClick={nextChallenge}
-              disabled={countdown > 0}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium text-sm disabled:opacity-50"
-            >
-              ✅ Concluir Atual
-            </button>
+            {manualBypassAllowed && (
+              <button
+                onClick={nextChallenge}
+                disabled={countdown > 0}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-medium text-sm disabled:opacity-50"
+              >
+                ✅ Concluir Atual
+              </button>
+            )}
             
             <button
               onClick={failCurrentChallenge}

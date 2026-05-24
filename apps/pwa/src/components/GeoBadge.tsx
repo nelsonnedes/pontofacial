@@ -155,19 +155,17 @@ export default function GeoBadge({
     }
   };
 
-  // Geocodificação reversa (simulada - em produção usar API real)
+  // Exibe as coordenadas como referência quando não há serviço de endereço configurado
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
-      // Em produção, usar uma API real como Google Maps, OpenStreetMap, etc.
-      // Por enquanto, simular um endereço
       if (typeof lat !== 'number' || typeof lng !== 'number') {
         return;
       }
-      const mockAddress = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+      const coordinateReference = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
       
       setLocation(prev => prev ? {
         ...prev,
-        address: mockAddress
+        address: coordinateReference
       } : null);
     } catch (error) {
       console.warn('Erro na geocodificação reversa:', error);

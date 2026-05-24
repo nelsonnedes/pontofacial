@@ -1,8 +1,10 @@
 'use client';
 
 import { createContext, useContext, ReactNode, useState, useEffect, useMemo } from 'react';
-// import { useFaceAPIInit } from '@/hooks/useFaceAPIInit'; // Desabilitado - usando versão otimizada
+// ✅ CORREÇÃO TDZ: Import estático direto para evitar dependência circular
+import { optimizedFaceRecognition } from '@/lib/face-recognition-optimized';
 import { FaceAPIErrorBoundary } from './ErrorBoundary';
+import { canUseBiometricDemoFallback, isStrictProduction } from '@/lib/production-guardrails';
 
 interface FaceAPIContextType {
   initialized: boolean;
@@ -41,45 +43,89 @@ export function FaceAPIProvider({ children }: FaceAPIProviderProps) {
   useEffect(() => {
     setMounted(true);
     
-    // Inicializar versão otimizada
+    // Inicializar versão otimizada com retry e timeout estendido
     const initOptimized = async () => {
-      try {
-        setFaceAPIState(prev => ({
-          ...prev,
-          initializing: true,
-          error: null
-        }));
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (attempts < maxAttempts) {
+        try {
+          attempts++;
+          console.log(`🔄 Tentativa ${attempts}/${maxAttempts} de inicialização da Face API...`);
+          
+          setFaceAPIState(prev => ({
+            ...prev,
+            initializing: true,
+            error: null
+          }));
 
-        const module = await import('@/lib/face-recognition-optimized');
-        const optimizedFaceRecognition = module.optimizedFaceRecognition;
-        
-        await optimizedFaceRecognition.initialize();
-        
-        setFaceAPIState({
-          initialized: optimizedFaceRecognition.isReady(),
-          initializing: false,
-          error: null,
-          mounted: true,
-          retry: async () => {
-            await initOptimized();
-            return optimizedFaceRecognition.isReady();
-          },
-          initializeFaceAPI: async () => {
-            await optimizedFaceRecognition.initialize();
-            return optimizedFaceRecognition.isReady();
-          },
-          isReady: () => optimizedFaceRecognition.isReady()
-        });
+          // ✅ CORREÇÃO TDZ: Usar import estático já disponível
+          
+          // Aguardar inicialização com timeout estendido
+          await Promise.race([
+            optimizedFaceRecognition.initialize(),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error(`Timeout na tentativa ${attempts}`)), 30000) // 30s por tentativa
+            )
+          ]);
+          
+          // Verificar se realmente está pronto
+          const isReady = optimizedFaceRecognition.isReady();
+          console.log(`✅ Face API inicializada na tentativa ${attempts}, pronta: ${isReady}`);
+          
+          setFaceAPIState({
+            initialized: isReady,
+            initializing: false,
+            error: isReady ? null : 'Motor facial local indisponivel',
+            mounted: true,
+            retry: async () => {
+              await initOptimized();
+              return optimizedFaceRecognition.isReady();
+            },
+            initializeFaceAPI: async () => {
+              await optimizedFaceRecognition.initialize();
+              return optimizedFaceRecognition.isReady();
+            },
+            isReady: () => optimizedFaceRecognition.isReady()
+          });
 
-        console.log('✅ Face API Provider usando versão otimizada');
-      } catch (error) {
-        console.warn('⚠️ Face API otimizada não disponível:', error);
-        setFaceAPIState(prev => ({
-          ...prev,
-          initialized: false,
-          initializing: false,
-          error: 'Face API otimizada não disponível - sistema funcionará com backup de foto'
-        }));
+          console.log('✅ Face API Provider usando versão otimizada');
+          return; // Sucesso, sair do loop
+          
+        } catch (error) {
+          console.warn(`⚠️ Tentativa ${attempts}/${maxAttempts} falhou:`, error);
+          
+          if (attempts >= maxAttempts) {
+            const allowFallback = canUseBiometricDemoFallback();
+            console.log(
+              allowFallback
+                ? '🔄 Face API não disponível - modo demo explicitamente habilitado'
+                : '🚫 Face API não disponível - falhando fechado'
+            );
+            setFaceAPIState(prev => ({
+              ...prev,
+              initialized: allowFallback,
+              initializing: false,
+              error: allowFallback
+                ? null
+                : isStrictProduction()
+                  ? 'Reconhecimento facial local bloqueado em producao; configure motor server/provider.'
+                  : 'Reconhecimento facial indisponivel. Configure motor real ou habilite demo apenas em desenvolvimento.',
+              mounted: true,
+              retry: async () => {
+                await initOptimized();
+                return optimizedFaceRecognition.isReady();
+              },
+              initializeFaceAPI: async () => {
+                return optimizedFaceRecognition.isReady();
+              },
+              isReady: () => allowFallback
+            }));
+          } else {
+            // Aguardar antes da próxima tentativa
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
       }
     };
 

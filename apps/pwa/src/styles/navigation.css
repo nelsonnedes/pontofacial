@@ -1,0 +1,1054 @@
+/* ===== SISTEMA DE NAVEGAÇÃO PADRONIZADO ===== */
+/* Sidebar recolhível, responsivo e intuitivo para PWA */
+
+/* ===== VARIÁVEIS CUSTOMIZADAS ===== */
+:root {
+  /* Dimensões */
+  --sidebar-width-expanded: 280px;
+  --sidebar-width-collapsed: 64px;
+  --sidebar-mobile-width: 320px;
+  
+  /* Cores - Modo Claro */
+  --nav-bg: rgba(255, 255, 255, 0.95);
+  --nav-bg-mobile: rgba(255, 255, 255, 0.98);
+  --nav-border: rgba(226, 232, 240, 0.8);
+  --nav-text: #374151;
+  --nav-text-secondary: #6B7280;
+  --nav-hover-bg: rgba(59, 130, 246, 0.08);
+  --nav-active-bg: rgba(59, 130, 246, 0.12);
+  --nav-active-border: #3B82F6;
+  --nav-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --nav-shadow-mobile: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  
+  /* Animações */
+  --nav-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --nav-transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== MODO ESCURO ===== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --nav-bg: rgba(31, 41, 55, 0.95);
+    --nav-bg-mobile: rgba(31, 41, 55, 0.98);
+    --nav-border: rgba(75, 85, 99, 0.8);
+    --nav-text: #F3F4F6;
+    --nav-text-secondary: #9CA3AF;
+    --nav-hover-bg: rgba(59, 130, 246, 0.12);
+    --nav-active-bg: rgba(59, 130, 246, 0.20);
+    --nav-active-border: #60A5FA;
+    --nav-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+    --nav-shadow-mobile: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ===== CONTAINER PRINCIPAL ===== */
+.nav-container {
+  position: relative;
+  min-height: 100vh;
+  background: #F9FAFB;
+  transition: var(--nav-transition);
+}
+
+@media (prefers-color-scheme: dark) {
+  .nav-container {
+    background: #111827;
+  }
+}
+
+/* ===== SIDEBAR PRINCIPAL ===== */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  background: var(--nav-bg);
+  border-right: 1px solid var(--nav-border);
+  box-shadow: var(--nav-shadow);
+  transition: var(--nav-transition);
+  z-index: 30;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  
+  /* Estado expandido por padrão */
+  width: var(--sidebar-width-expanded);
+  transform: translateX(0);
+  /* ✅ CORREÇÃO: Layout flex para estrutura correta */
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== ESTADOS DO SIDEBAR ===== */
+
+/* Estado recolhido */
+.sidebar--collapsed {
+  width: var(--sidebar-width-collapsed);
+}
+
+/* ✅ CORREÇÃO: Recolhimento completo do sidebar */
+.sidebar--collapsed .sidebar-header {
+  padding: 0.75rem 0.5rem;
+  min-height: 92px;
+  flex-direction: column;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.sidebar--collapsed .sidebar-logo {
+  justify-content: center;
+}
+
+.sidebar--collapsed .sidebar-logo-text {
+  display: none;
+}
+
+.sidebar--collapsed .nav-text {
+  display: none;
+}
+
+.sidebar--collapsed .nav-section-title {
+  display: none;
+}
+
+.sidebar--collapsed .nav-link {
+  justify-content: center;
+  padding: 0.75rem 0.5rem;
+}
+
+.sidebar--collapsed .nav-icon {
+  margin: 0;
+}
+
+/* Estado mobile */
+.sidebar--mobile {
+  width: var(--sidebar-mobile-width);
+  box-shadow: var(--nav-shadow-mobile);
+  background: var(--nav-bg-mobile);
+  transform: translateX(-100%);
+}
+
+/* Mobile aberto */
+.sidebar--mobile.sidebar--open {
+  transform: translateX(0);
+}
+
+/* ===== OVERLAY MOBILE ===== */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: var(--nav-transition);
+  z-index: 25;
+}
+
+.sidebar-overlay--visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ===== HEADER DO SIDEBAR ===== */
+.sidebar-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--nav-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  position: relative;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--nav-text);
+  font-weight: 700;
+  font-size: 1.125rem;
+  transition: var(--nav-transition-fast);
+}
+
+.sidebar-logo-icon {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3B82F6, #1D4ED8);
+  border-radius: 0.5rem;
+  color: white;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.sidebar-logo-text {
+  transition: var(--nav-transition);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Logo no estado recolhido - REMOVIDO (já coberto acima) */
+
+/* ===== BOTÃO TOGGLE ===== */
+.sidebar-toggle {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--nav-hover-bg);
+  border-radius: 0.375rem;
+  color: var(--nav-text);
+  cursor: pointer;
+  transition: var(--nav-transition-fast);
+  flex-shrink: 0;
+  position: absolute;
+  top: 50%;
+  right: -0.75rem;
+  transform: translateY(-50%);
+  z-index: 35;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+  border: 1px solid var(--nav-border);
+  background: var(--nav-bg);
+}
+
+.sidebar-toggle:hover {
+  background: var(--nav-active-bg);
+  transform: translateY(-50%) scale(1.05);
+}
+
+.sidebar-toggle:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+/* Toggle no estado recolhido */
+.sidebar--collapsed .sidebar-toggle {
+  position: static;
+  margin: 0;
+  transform: none;
+  box-shadow: none;
+  background: var(--nav-hover-bg);
+}
+
+.sidebar--collapsed .sidebar-toggle:hover {
+  transform: scale(1.05);
+}
+
+.sidebar--collapsed .sidebar-toggle:active {
+  transform: scale(0.95);
+}
+
+/* ===== NAVEGAÇÃO ===== */
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1rem 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--nav-border) transparent;
+  min-height: 0;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: var(--nav-border);
+  border-radius: 2px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: var(--nav-text-secondary);
+}
+
+/* ===== LISTA DE NAVEGAÇÃO ===== */
+.nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.75rem;
+}
+
+.nav-item {
+  margin-bottom: 0.25rem;
+}
+
+/* ===== LINKS DE NAVEGAÇÃO ===== */
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: var(--nav-text);
+  text-decoration: none;
+  border-radius: 0.5rem;
+  transition: var(--nav-transition-fast);
+  position: relative;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.nav-link:hover {
+  background: var(--nav-hover-bg);
+  color: var(--nav-active-border);
+  transform: translateX(2px);
+}
+
+.nav-link:active {
+  transform: translateX(0);
+}
+
+/* Link ativo */
+.nav-link--active {
+  background: var(--nav-active-bg);
+  color: var(--nav-active-border);
+  font-weight: 600;
+  border-left: 3px solid var(--nav-active-border);
+  padding-left: calc(1rem - 3px);
+}
+
+.nav-link--active:hover {
+  background: var(--nav-active-bg);
+  transform: none;
+}
+
+/* ===== ÍCONES DOS LINKS ===== */
+.nav-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.nav-text {
+  transition: var(--nav-transition);
+  white-space: nowrap;
+  overflow: hidden;
+  flex: 1;
+}
+
+/* Texto no estado recolhido - REMOVIDO (já coberto acima) */
+
+/* ===== TOOLTIP PARA ESTADO RECOLHIDO ===== */
+.nav-tooltip {
+  position: absolute;
+  left: calc(100% + 0.5rem);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--nav-text);
+  color: var(--nav-bg);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: var(--nav-transition-fast);
+  z-index: 50;
+  pointer-events: none;
+}
+
+.nav-tooltip::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 4px solid transparent;
+  border-right-color: var(--nav-text);
+}
+
+/* Mostrar tooltip no hover quando recolhido */
+.sidebar--collapsed .nav-link:hover .nav-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Tooltip flutuante renderizado fora do sidebar para não ser cortado pelo scroll */
+.nav-floating-tooltip {
+  position: fixed;
+  transform: translateY(-50%);
+  background: #111827;
+  color: #FFFFFF;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.22);
+  z-index: 100000;
+  pointer-events: none;
+}
+
+.nav-floating-tooltip::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 4px solid transparent;
+  border-right-color: #111827;
+}
+
+/* ===== SEÇÕES/GRUPOS DE NAVEGAÇÃO ===== */
+.nav-section {
+  margin: 1.5rem 0;
+}
+
+.nav-section-title {
+  padding: 0 1.75rem 0.5rem;
+  color: var(--nav-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: var(--nav-transition);
+}
+
+/* Seção no estado recolhido - REMOVIDO (já coberto acima) */
+
+/* ===== CONTEÚDO PRINCIPAL ===== */
+.main-content {
+  transition: var(--nav-transition);
+  min-height: 100vh;
+  
+  /* Por padrão, margem para sidebar expandido */
+  margin-left: var(--sidebar-width-expanded);
+}
+
+/* Conteúdo quando sidebar recolhido */
+.main-content--sidebar-collapsed {
+  margin-left: var(--sidebar-width-collapsed);
+}
+
+/* ===== RESPONSIVIDADE MODERNA ===== */
+
+/* Desktop Grande (1440px+) */
+@media (min-width: 1440px) {
+  .sidebar:not(.sidebar--collapsed) {
+    width: calc(var(--sidebar-width-expanded) + 20px);
+  }
+  
+  .nav-link {
+    padding: 0.875rem 1.125rem;
+    font-size: 0.9375rem;
+  }
+  
+  .nav-section-title {
+    font-size: 0.8125rem;
+  }
+}
+
+/* Desktop (1025px - 1439px) - Padrão já definido */
+
+/* Tablet Landscape (769px - 1024px) */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .sidebar {
+    width: var(--sidebar-width-collapsed);
+  }
+  
+  .main-content {
+    margin-left: var(--sidebar-width-collapsed);
+  }
+  
+  .main-content--sidebar-collapsed {
+    margin-left: var(--sidebar-width-collapsed);
+  }
+  
+  .sidebar-logo-text,
+  .nav-text,
+  .nav-section-title {
+    opacity: 0;
+    width: 0;
+  }
+  
+  .nav-link {
+    padding: 0.6875rem 0.875rem;
+    font-size: 0.8125rem;
+  }
+}
+
+/* Tablet Portrait + Mobile (≤768px) */
+@media (max-width: 768px) {
+  .sidebar {
+    width: var(--sidebar-mobile-width);
+    transform: translateX(-100%);
+    background: var(--nav-bg-mobile);
+    box-shadow: var(--nav-shadow-mobile);
+    /* ✅ CRITICAL: z-index alto para mobile */
+    z-index: 50;
+  }
+  
+  .sidebar--open {
+    transform: translateX(0);
+  }
+  
+  .main-content {
+    margin-left: 0;
+  }
+  
+  .main-content--sidebar-collapsed {
+    margin-left: 0;
+  }
+  
+  /* Reverter texto em mobile */
+  .sidebar-logo-text,
+  .nav-text,
+  .nav-section-title {
+    opacity: 1;
+    width: auto;
+  }
+  
+  /* Tipografia mobile otimizada */
+  .nav-link {
+    padding: 0.875rem 1rem;
+    font-size: clamp(0.875rem, 4vw, 1rem);
+    font-weight: 500;
+  }
+  
+  .nav-section-title {
+    font-size: clamp(0.6875rem, 3vw, 0.75rem);
+    padding: 0 1.5rem 0.375rem;
+  }
+  
+  .sidebar-logo {
+    font-size: clamp(1rem, 5vw, 1.125rem);
+  }
+  
+  /* Não mostrar tooltips em mobile */
+  .nav-tooltip {
+    display: none;
+  }
+}
+
+/* Mobile Pequeno (≤640px) - NOVO BREAKPOINT */
+@media (max-width: 640px) {
+  .sidebar {
+    /* Mobile real: largura quase full-screen */
+    width: calc(100vw - 2rem);
+    max-width: var(--sidebar-mobile-width);
+  }
+  
+  .nav-link {
+    padding: 1rem;
+    font-size: 1rem;
+    border-radius: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+  
+  .nav-section-title {
+    font-size: 0.75rem;
+    padding: 1rem 1.5rem 0.5rem;
+    font-weight: 700;
+  }
+  
+  .sidebar-header {
+    padding: 1.25rem;
+    min-height: 80px;
+  }
+  
+  .sidebar-logo {
+    font-size: 1.125rem;
+    font-weight: 800;
+  }
+  
+  .sidebar-logo-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    font-size: 1.125rem;
+  }
+}
+
+/* ===== HEADER MÓVEL MELHORADO ===== */
+.mobile-header {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: var(--nav-bg-mobile);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--nav-border);
+  z-index: 40; /* ✅ Z-index adequado (menor que sidebar) */
+  padding: 0 1rem;
+  align-items: center;
+  justify-content: space-between;
+  /* ✅ Safe area para dispositivos com notch */
+  padding-top: env(safe-area-inset-top);
+  height: calc(64px + env(safe-area-inset-top));
+}
+
+@media (max-width: 768px) {
+  .mobile-header {
+    display: flex;
+  }
+  
+  .main-content {
+    padding-top: calc(64px + env(safe-area-inset-top));
+    /* ✅ CRITICAL: Altura mínima auto para prevenir scroll excessivo */
+    min-height: auto !important;
+  }
+  
+  /* ✅ Container de layout responsivo */
+  .nav-container {
+    min-height: 100vh;
+    min-height: 100dvh; /* Dynamic viewport para mobile */
+    overflow-x: hidden; /* Prevenir scroll horizontal */
+  }
+}
+
+/* Mobile pequeno - header mais compacto */
+@media (max-width: 640px) {
+  .mobile-header {
+    height: calc(56px + env(safe-area-inset-top));
+    padding: 0 0.875rem;
+  }
+  
+  .main-content {
+    padding-top: calc(56px + env(safe-area-inset-top));
+  }
+}
+
+.mobile-menu-btn {
+  /* ✅ Botão mobile melhorado */
+  width: 2.75rem;
+  height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--nav-hover-bg);
+  border-radius: 0.75rem;
+  color: var(--nav-text);
+  cursor: pointer;
+  transition: var(--nav-transition-fast);
+  font-size: 1.375rem;
+  /* ✅ Touch target adequado para mobile */
+  min-width: 44px;
+  min-height: 44px;
+  position: relative;
+  overflow: hidden;
+}
+
+.mobile-menu-btn:hover {
+  background: var(--nav-active-bg);
+  transform: scale(1.05);
+}
+
+.mobile-menu-btn:active {
+  transform: scale(0.95);
+  background: var(--nav-active-bg);
+}
+
+/* ✅ Feedback visual melhorado */
+.mobile-menu-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--nav-active-border);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.mobile-menu-btn:focus::after,
+.mobile-menu-btn:focus-visible::after {
+  opacity: 0.1;
+}
+
+/* ✅ Estados do botão com animação */
+.mobile-menu-btn--open {
+  background: var(--nav-active-bg);
+  color: var(--nav-active-border);
+}
+
+/* ===== BADGE/NOTIFICAÇÕES ===== */
+.nav-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  background: #EF4444;
+  color: white;
+  border-radius: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  font-size: 0.625rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0.5rem;
+}
+
+.nav-badge--with-number {
+  border-radius: 0.75rem;
+  padding: 0 0.25rem;
+  min-width: 1rem;
+  height: 1rem;
+  font-weight: 600;
+}
+
+/* ===== ANIMAÇÕES CUSTOMIZADAS ===== */
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ===== UTILITÁRIOS ===== */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ===== ACESSIBILIDADE ===== */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .main-content,
+  .nav-link,
+  .sidebar-toggle,
+  .mobile-menu-btn,
+  .sidebar-overlay {
+    transition: none;
+  }
+  
+  .nav-link:hover {
+    transform: none;
+  }
+  
+  .sidebar-toggle:hover,
+  .mobile-menu-btn:hover {
+    transform: none;
+  }
+}
+
+/* ===== FOCUS STATES ===== */
+.nav-link:focus,
+.sidebar-toggle:focus,
+.mobile-menu-btn:focus {
+  outline: 2px solid var(--nav-active-border);
+  outline-offset: 2px;
+}
+
+/* ===== MELHORIAS DE PERFORMANCE ===== */
+.sidebar {
+  will-change: transform, width;
+}
+
+.main-content {
+  will-change: margin-left;
+}
+
+.nav-link {
+  will-change: background-color, transform;
+}
+
+/* ===== CORREÇÕES ANTI-SCROLL EXCESSIVO ===== */
+
+/* ✅ Prevenir scroll infinito em containers */
+.main-content > * {
+  /* Containers filhos não devem ter altura mínima excessiva */
+  min-height: unset !important;
+}
+
+/* ✅ Ajustes específicos para páginas admin em mobile */
+@media (max-width: 768px) {
+  /* Remover min-height problemático de divs de página */
+  .min-h-screen {
+    min-height: auto !important;
+  }
+  
+  /* Containers de conteúdo principal */
+  .space-y-8 > *,
+  .space-y-6 > *,
+  .space-y-4 > * {
+    margin-bottom: clamp(1rem, 4vw, 2rem) !important;
+  }
+  
+  /* Cards e containers responsivos */
+  .grid {
+    gap: clamp(1rem, 4vw, 1.5rem) !important;
+  }
+  
+  /* Tipografia responsiva para cards */
+  .text-2xl {
+    font-size: clamp(1.25rem, 5vw, 1.5rem) !important;
+  }
+  
+  .text-xl {
+    font-size: clamp(1.125rem, 4.5vw, 1.25rem) !important;
+  }
+  
+  /* Padding responsivo para containers */
+  .p-8 {
+    padding: clamp(1rem, 4vw, 2rem) !important;
+  }
+  
+  .p-6 {
+    padding: clamp(0.875rem, 3.5vw, 1.5rem) !important;
+  }
+  
+  .p-4 {
+    padding: clamp(0.75rem, 3vw, 1rem) !important;
+  }
+  
+  /* Botões mais touch-friendly */
+  button {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+  }
+  
+  /* Links mais touch-friendly */
+  a {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    touch-action: manipulation;
+  }
+}
+
+/* ✅ Mobile pequeno - ajustes extras */
+@media (max-width: 640px) {
+  /* Grid responsivo para mobile pequeno */
+  .grid-cols-1,
+  .grid-cols-2,
+  .grid-cols-3,
+  .grid-cols-4,
+  .lg\:grid-cols-4,
+  .md\:grid-cols-3,
+  .sm\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* Espaçamento otimizado */
+  .space-y-8 > * + * {
+    margin-top: 1.5rem !important;
+  }
+  
+  /* Flex containers responsivos */
+  .flex {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  
+  .justify-between {
+    justify-content: flex-start !important;
+  }
+}
+
+/* ===== RESPONSIVIDADE MOBILE CRÍTICA ===== */
+
+/* Mobile devices (≤768px) - CORREÇÃO CRÍTICA */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--sidebar-mobile-width);
+    transform: translateX(-100%);
+    background: var(--nav-bg-mobile);
+    box-shadow: var(--nav-shadow-mobile);
+    z-index: 9999 !important; /* ✅ CORREÇÃO: z-index muito alto */
+    transition: transform 0.3s ease-in-out;
+    /* ✅ CORREÇÃO: Altura completa para mobile */
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar--open {
+    transform: translateX(0) !important;
+  }
+
+  /* ✅ CORREÇÃO: Navegação mobile com scroll correto */
+  .sidebar-nav {
+    height: calc(100vh - 72px); /* Altura total menos header */
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9998;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+  }
+
+  .sidebar-overlay--visible {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .mobile-header {
+    display: flex !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: var(--nav-bg-mobile);
+    border-bottom: 1px solid var(--nav-border);
+    z-index: 9997;
+    padding: 0 1rem;
+    align-items: center;
+    justify-content: space-between;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .mobile-menu-btn {
+    width: 2.75rem;
+    height: 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: var(--nav-hover-bg);
+    border-radius: 0.75rem;
+    color: var(--nav-text);
+    cursor: pointer;
+    transition: var(--nav-transition-fast);
+    font-size: 1.375rem;
+    min-width: 44px;
+    min-height: 44px;
+    position: relative;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+
+  .mobile-menu-btn:hover,
+  .mobile-menu-btn:focus {
+    background: var(--nav-active-bg);
+    transform: scale(1.05);
+    outline: none;
+  }
+
+  .mobile-menu-btn:active {
+    transform: scale(0.95);
+  }
+
+  .mobile-menu-btn--open {
+    background: var(--nav-active-bg);
+    color: var(--nav-active-border);
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    padding-top: 80px; /* Espaço para mobile header */
+  }
+
+  /* Reverter texto em mobile */
+  .sidebar-logo-text,
+  .nav-text,
+  .nav-section-title {
+    opacity: 1 !important;
+    width: auto !important;
+  }
+
+  /* Não mostrar tooltips em mobile */
+  .nav-tooltip {
+    display: none !important;
+  }
+
+  /* Tipografia mobile otimizada */
+  .nav-link {
+    padding: 0.875rem 1rem;
+    font-size: clamp(0.875rem, 4vw, 1rem);
+    font-weight: 500;
+    border-radius: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .nav-section-title {
+    font-size: clamp(0.6875rem, 3vw, 0.75rem);
+    padding: 1rem 1.5rem 0.5rem;
+    font-weight: 700;
+  }
+
+  .sidebar-logo {
+    font-size: clamp(1rem, 5vw, 1.125rem);
+  }
+}
+
+/* ===== PWA ESPECÍFICO ===== */
+/* Ajustes para tela cheia em dispositivos móveis */
+@media (display-mode: standalone) {
+  .nav-container {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .mobile-header {
+    padding-top: env(safe-area-inset-top);
+    height: calc(64px + env(safe-area-inset-top));
+  }
+
+  .main-content {
+    padding-top: calc(80px + env(safe-area-inset-top));
+    /* ✅ Padding bottom para safe area */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* ✅ Ajuste de altura para PWA */
+  .nav-container {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}

@@ -1,30 +1,154 @@
 // Service Worker para Ponto Facial PWA
-// Versão: 1.0.0
+// Versao: 1.0.5
 
-const CACHE_NAME = 'ponto-facial-v1';
+const CACHE_NAME = 'ponto-facial-v12';
+const PWA_ASSET_VERSION = '20260524-icon-v2';
 const OFFLINE_URL = '/app';
 
-// Recursos essenciais para cache
+// Recursos essenciais seguros para cache persistente.
+// HTML de paginas deve ser network-first para evitar chunks antigos apos deploy.
 const ESSENTIAL_RESOURCES = [
-  '/',
-  '/app',
-  '/login',
-  '/manifest.webmanifest',
-  '/favicon.ico'
+  `/manifest.webmanifest?v=${PWA_ASSET_VERSION}`,
+  `/favicon.ico?v=${PWA_ASSET_VERSION}`,
+  `/icons/apple-touch-icon.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-32x32.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-48x48.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-72x72.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-96x96.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-128x128.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-144x144.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-152x152.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-192x192.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-384x384.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-512x512.png?v=${PWA_ASSET_VERSION}`
 ];
 
-// Recursos estáticos para cache
+// Fallback offline. Ele pode ficar em cache, mas nunca deve vencer a rede.
 const STATIC_RESOURCES = [
-  '/app/marcar',
-  '/app/historico', 
-  '/app/fila',
-  '/app/comprovantes',
-  '/app/cadastro-facial',
-  '/admin',
-  '/admin/geofences',
-  '/admin/users',
-  '/admin/reports'
+  OFFLINE_URL
 ];
+
+const NEXT_STATIC_PREFIX = '/_next/static/';
+const CACHEABLE_STATIC_EXTENSIONS = [
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.svg',
+  '.ico',
+  '.webmanifest'
+];
+
+function isHtmlRequest(request) {
+  return request.mode === 'navigate' ||
+    (request.headers.get('accept') || '').includes('text/html');
+}
+
+function isNextStaticAsset(url) {
+  return url.origin === location.origin && url.pathname.startsWith(NEXT_STATIC_PREFIX);
+}
+
+function hasFileExtension(pathname) {
+  return /\/[^/]+\.[^/]+$/.test(pathname);
+}
+
+function shouldLetBrowserHandleCanonicalRedirect(request, url) {
+  return url.origin === location.origin &&
+    isHtmlRequest(request) &&
+    url.pathname !== '/' &&
+    !url.pathname.endsWith('/') &&
+    !hasFileExtension(url.pathname);
+}
+
+function shouldBypassServiceWorker(url) {
+  return (
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('google.com') ||
+    url.hostname.includes('gstatic.com') ||
+    url.hostname.includes('firebase') ||
+    url.hostname.includes('firestore') ||
+    url.pathname.startsWith('/api/') ||
+    isNextStaticAsset(url) ||
+    url.pathname.includes('/v1alpha/') ||
+    url.pathname.includes('/executor.') ||
+    url.pathname.includes('/js/api.') ||
+    url.pathname.includes('/npm/') ||
+    url.pathname.includes('/_/scs/') ||
+    url.pathname.includes('/google.firestore.') ||
+    url.pathname.includes('/_/firebase/') ||
+    url.pathname.includes('/recaptcha/') ||
+    url.pathname.includes('/analytics/') ||
+    url.pathname.includes('/gtag/') ||
+    url.searchParams.has('_rsc') ||
+    url.pathname.endsWith('index.txt') ||
+    url.protocol === 'chrome-extension:' ||
+    url.protocol === 'moz-extension:' ||
+    url.protocol === 'data:' ||
+    url.protocol === 'blob:'
+  );
+}
+
+function isCacheableStatic(url) {
+  return url.origin === location.origin &&
+    CACHEABLE_STATIC_EXTENSIONS.some(ext => url.pathname.endsWith(ext));
+}
+
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+
+  try {
+    const response = await fetch(request, {
+      cache: 'no-store',
+      redirect: 'follow'
+    });
+
+    if (
+      response &&
+      response.status === 200 &&
+      response.type === 'basic' &&
+      !response.redirected
+    ) {
+      cache.put(request, response.clone()).catch(err => {
+        console.warn('⚠️ Service Worker: Erro ao atualizar cache:', err);
+      });
+    }
+
+    return response;
+  } catch (error) {
+    console.log('📵 Service Worker: Navegacao offline, tentando cache:', request.url);
+    return (await cache.match(request)) ||
+      (await cache.match(OFFLINE_URL)) ||
+      new Response('Offline', {
+        status: 503,
+        statusText: 'Service Unavailable'
+      });
+  }
+}
+
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+
+  if (cached) {
+    console.log('📦 Service Worker: Servindo estatico do cache:', request.url);
+    return cached;
+  }
+
+  const response = await fetch(request, { redirect: 'follow' });
+
+  if (
+    response &&
+    response.status === 200 &&
+    response.type === 'basic' &&
+    !response.redirected
+  ) {
+    cache.put(request, response.clone()).catch(err => {
+      console.warn('⚠️ Service Worker: Erro ao cachear estatico:', err);
+    });
+  }
+
+  return response;
+}
 
 // Instalar Service Worker
 self.addEventListener('install', (event) => {
@@ -35,10 +159,23 @@ self.addEventListener('install', (event) => {
       .then((cache) => {
         console.log('📦 Service Worker: Cache aberto');
         
-        // Tentar fazer cache dos recursos essenciais
+        // Cache inteligente: ícones primeiro, depois outros recursos.
+        const iconResources = ESSENTIAL_RESOURCES.filter(url => url.includes('/icons/'));
+        const otherResources = ESSENTIAL_RESOURCES.filter(url => !url.includes('/icons/'));
+        
         return Promise.all([
-          // Cache essenciais (obrigatório)
-          cache.addAll(ESSENTIAL_RESOURCES).catch(err => {
+          // Cache ícones primeiro (crítico)
+          cache.addAll(iconResources).catch(err => {
+            console.warn('⚠️ Alguns ícones falharam no cache:', err);
+            // Tentar cache individual dos ícones
+            return Promise.all(iconResources.map(iconUrl => 
+              cache.add(iconUrl).catch(iconErr => {
+                console.warn(`⚠️ Falha ao cachear ícone ${iconUrl}:`, iconErr);
+              })
+            ));
+          }),
+          // Cache outros recursos essenciais
+          cache.addAll(otherResources).catch(err => {
             console.warn('⚠️ Alguns recursos essenciais falharam no cache:', err);
           }),
           // Cache estáticos (opcional)
@@ -76,8 +213,17 @@ self.addEventListener('activate', (event) => {
       })
       .then(() => {
         console.log('✅ Service Worker: Ativado e assumindo controle');
-        // Assume controle imediatamente
         return self.clients.claim();
+      })
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({
+            type: 'SW_UPDATED',
+            cacheName: CACHE_NAME,
+            timestamp: Date.now()
+          });
+        });
       })
       .catch(err => {
         console.error('❌ Service Worker: Erro na ativação:', err);
@@ -92,78 +238,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Ignorar requisições para APIs externas e recursos específicos
   const url = new URL(event.request.url);
-  
-  // Ignorar APIs do Firebase, Chrome extensions, etc.
-  if (
-    url.hostname.includes('googleapis.com') ||
-    url.hostname.includes('google.com') ||
-    url.hostname.includes('gstatic.com') ||
-    url.pathname.startsWith('/api/') ||
-    url.pathname.startsWith('/_next/static/') ||
-    url.protocol === 'chrome-extension:' ||
-    url.protocol === 'moz-extension:'
-  ) {
+
+  // Firebase Hosting redireciona paginas exportadas para a versao com barra final.
+  // Deixar o navegador seguir esse redirect evita respostas redirecionadas dentro do FetchEvent.
+  if (shouldLetBrowserHandleCanonicalRedirect(event.request, url)) {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Retorna do cache se encontrar
-        if (response) {
-          console.log('📦 Service Worker: Servindo do cache:', event.request.url);
-          return response;
-        }
+  if (shouldBypassServiceWorker(url)) {
+    return;
+  }
 
-        // Se não encontrar no cache, buscar da rede
-        return fetch(event.request)
-          .then((response) => {
-            // Só fazer cache de respostas válidas
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
+  if (isHtmlRequest(event.request)) {
+    event.respondWith(networkFirst(event.request));
+    return;
+  }
 
-            // Clonar a resposta pois ela só pode ser lida uma vez
-            const responseToCache = response.clone();
-
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                // Cache apenas recursos da nossa aplicação
-                if (url.origin === location.origin) {
-                  cache.put(event.request, responseToCache);
-                }
-              })
-              .catch(err => {
-                console.warn('⚠️ Service Worker: Erro ao fazer cache:', err);
-              });
-
-            return response;
-          })
-          .catch(() => {
-            console.log('📵 Service Worker: Offline - servindo página offline');
-            
-            // Se está offline e é uma navegação, servir a página principal
-            if (event.request.mode === 'navigate') {
-              return caches.match(OFFLINE_URL);
-            }
-            
-            // Para outros recursos, retornar um erro
-            return new Response('Offline', {
-              status: 503,
-              statusText: 'Service Unavailable'
-            });
-          });
-      })
-      .catch(err => {
-        console.error('❌ Service Worker: Erro no fetch:', err);
-        return new Response('Erro no Service Worker', {
-          status: 500,
-          statusText: 'Internal Server Error'
-        });
-      })
-  );
+  if (isCacheableStatic(url)) {
+    event.respondWith(cacheFirst(event.request));
+  }
 });
 
 // Escutar mensagens do cliente
@@ -214,7 +308,15 @@ self.addEventListener('message', (event) => {
       break;
       
     default:
-      console.log('📨 Service Worker: Mensagem recebida:', type, data);
+      // ✅ CORREÇÃO: Verificar se data existe antes de logar
+      if (data && Object.keys(data).length > 0) {
+        console.log('📨 Service Worker: Mensagem recebida:', type, data);
+      } else if (type) {
+        console.log('📨 Service Worker: Mensagem recebida:', type, 'sem dados');
+      } else {
+        // Ignorar mensagens completamente inválidas para reduzir ruído
+        return;
+      }
       break;
   }
 });
@@ -242,8 +344,8 @@ self.addEventListener('push', (event) => {
   
   const options = {
     body: event.data ? event.data.text() : 'Notificação do Ponto Facial',
-    icon: '/favicon.ico',
-    badge: '/favicon.ico'
+    icon: `/icons/icon-192x192.png?v=${PWA_ASSET_VERSION}`,
+    badge: `/icons/icon-72x72.png?v=${PWA_ASSET_VERSION}`
   };
 
   event.waitUntil(

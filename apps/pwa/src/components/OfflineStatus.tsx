@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useOfflineTimeRecords, formatTimeRecordType, formatSyncStatus } from '@/hooks/useOfflineTimeRecords';
-import { OfflineTimeRecord } from '@/lib/offline-db';
+import { OfflineTimeRecord } from '@/lib/offline-queue';
 
 interface OfflineStatusProps {
   className?: string;
@@ -32,7 +32,6 @@ export default function OfflineStatus({
 
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [autoSync, setAutoSyncState] = useState(true);
-  const [expandedRecord, setExpandedRecord] = useState<number | null>(null);
   const [syncStatus, setSyncStatus] = useState<any>(null);
 
   // Carregar configuração de sincronização automática
@@ -88,14 +87,6 @@ export default function OfflineStatus({
       minute: '2-digit',
       second: '2-digit'
     });
-  };
-
-  const formatLocation = (location?: OfflineTimeRecord['location']) => {
-    if (!location || typeof location.latitude !== 'number' || typeof location.longitude !== 'number') {
-      return 'Não disponível';
-    }
-    const accuracy = typeof location.accuracy === 'number' ? location.accuracy : 0;
-    return `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)} (±${Math.round(accuracy)}m)`;
   };
 
   // Renderização compacta
@@ -534,7 +525,7 @@ function OfflineStatusModal({
                             <div>
                               <span className="font-medium text-gray-700">Offline:</span>
                               <div className="text-gray-600">
-                                {record.metadata.offline ? 'Sim' : 'Não'}
+                                {record.metadata?.offline ? 'Sim' : 'Não'}
                               </div>
                             </div>
                             {record.syncError && (

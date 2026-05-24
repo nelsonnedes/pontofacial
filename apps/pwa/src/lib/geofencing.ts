@@ -316,7 +316,7 @@ export const DEFAULT_GEOFENCES: Partial<Geofence>[] = [
   }
 ];
 
-export default {
+const geofencing = {
   calculateDistance,
   validateLocationInFence,
   validateLocationAgainstFences,
@@ -326,3 +326,5 @@ export default {
   calculateGeofenceStats,
   DEFAULT_GEOFENCES
 };
+
+export default geofencing;

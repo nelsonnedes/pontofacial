@@ -23,8 +23,8 @@ export default function Home(){
             
             {/* Subtitle */}
             <p className="text-xl text-gray-600 mb-12 max-w-2xl mx-auto leading-relaxed">
-              Sistema moderno de controle de ponto com reconhecimento facial. 
-              Seguro, rápido e funciona offline.
+              Sistema moderno de controle de ponto com validação facial e geolocalização. 
+              Rápido, auditável e preparado para operação offline.
             </p>
             
             {/* CTA Buttons */}
@@ -64,7 +64,7 @@ export default function Home(){
                 </svg>
               </div>
               <h3 className="font-semibold text-gray-900 mb-2">Reconhecimento Facial</h3>
-              <p className="text-sm text-gray-600">Identificação segura e precisa com tecnologia avançada</p>
+              <p className="text-sm text-gray-600">Identificação facial configurável com validação por similaridade</p>
             </div>
             
             <div className="text-center">
@@ -93,8 +93,8 @@ export default function Home(){
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </div>
-              <h3 className="font-semibold text-gray-900 mb-2">Relatórios AFD</h3>
-              <p className="text-sm text-gray-600">Geração automática de arquivos para o eSocial</p>
+              <h3 className="font-semibold text-gray-900 mb-2">Prévias de Relatórios</h3>
+              <p className="text-sm text-gray-600">Conferência operacional de registros antes do fechamento legal</p>
             </div>
           </div>
         </div>
@@ -112,7 +112,7 @@ export default function Home(){
       {/* Footer */}
       <footer className="bg-white border-t py-8">
         <div className="max-w-4xl mx-auto px-4 text-center">
-          <p className="text-gray-600">© 2024 Ponto Facial PWA. Sistema de controle de ponto moderno e seguro.</p>
+          <p className="text-gray-600">© 2024 Ponto Facial PWA. Sistema operacional de controle de ponto.</p>
         </div>
       </footer>
     </div>

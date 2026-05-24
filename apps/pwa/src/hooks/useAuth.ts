@@ -96,8 +96,10 @@ class AuthManager {
 
   public addListener(listener: (user: User | null, loading: boolean) => void) {
     this.listeners.add(listener);
-    // Notificar imediatamente com o estado atual
-    listener(this.user, this.isLoading);
+    // ✅ CORREÇÃO: Só notificar se não estiver carregando para evitar re-renders desnecessários
+    if (!this.isLoading) {
+      listener(this.user, this.isLoading);
+    }
   }
 
   public removeListener(listener: (user: User | null, loading: boolean) => void) {

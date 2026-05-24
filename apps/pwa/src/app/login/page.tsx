@@ -15,7 +15,7 @@ export default function Login(){
 
   useEffect(() => {
     // Check if user is already logged in
-    const unsubscribe = auth.onAuthStateChanged((user) => {
+    const unsubscribe = auth.onAuthStateChanged((user: any) => {
       if (user) {
         router.push('/app')
       }
@@ -27,24 +27,47 @@ export default function Login(){
     e.preventDefault()
     setMsg(undefined)
     setLoading(true)
+    
+    // 🔍 DEBUG: Log dos dados sendo enviados
+    console.log('🔍 DEBUG Login:', {
+      email: email,
+      senha: senha ? '***' : '(empty)',
+      emailLength: email.length,
+      senhaLength: senha.length,
+      authConfigured: !!auth
+    })
+    
     try{
-      await signInWithEmailAndPassword(auth, email, senha)
+      console.log('🚀 Tentando autenticar com Firebase...')
+      const userCredential = await signInWithEmailAndPassword(auth, email, senha)
+      console.log('✅ Autenticação bem-sucedida:', userCredential.user?.email)
       setMsg('✅ Autenticado com sucesso! Redirecionando...')
       setTimeout(() => {
         router.push('/app')
       }, 1500)
     }catch(err:any){
+      // 🔍 DEBUG: Log detalhado do erro
+      console.error('❌ Erro de autenticação detalhado:', {
+        code: err.code,
+        message: err.message,
+        details: err.details,
+        fullError: err
+      })
+      
       let errorMessage = 'Falha no login'
       if (err.code === 'auth/user-not-found') {
-        errorMessage = 'Usuário não encontrado'
+        errorMessage = 'Usuário não encontrado no Firebase'
       } else if (err.code === 'auth/wrong-password') {
         errorMessage = 'Senha incorreta'
       } else if (err.code === 'auth/invalid-email') {
         errorMessage = 'Email inválido'
       } else if (err.code === 'auth/too-many-requests') {
         errorMessage = 'Muitas tentativas. Tente novamente mais tarde'
+      } else if (err.code === 'auth/invalid-credential') {
+        errorMessage = 'Credenciais inválidas - usuário não existe ou senha errada'
       }
-      setMsg(errorMessage)
+      
+      setMsg(`❌ ${errorMessage} (${err.code})`)
     } finally {
       setLoading(false)
     }
@@ -170,7 +193,7 @@ export default function Login(){
           <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
             <span className="flex items-center gap-1">
               <span>🔒</span>
-              Seguro
+              Autenticado
             </span>
             <span className="flex items-center gap-1">
               <span>⚡</span>

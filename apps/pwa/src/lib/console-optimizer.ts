@@ -156,7 +156,7 @@ class ConsoleOptimizer {
     };
 
     // Agrupar logs similares
-    let logCounts: {[key: string]: number} = {};
+    const logCounts: {[key: string]: number} = {};
     const LOG_GROUP_LIMIT = 3; // Mostrar no máximo 3 logs similares
 
     console.log = (...args: any[]) => {

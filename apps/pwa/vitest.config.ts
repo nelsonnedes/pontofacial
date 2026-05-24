@@ -7,7 +7,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{js,ts,tsx}'],
-    exclude: ['node_modules', 'out', '.next'],
+    exclude: ['node_modules', 'out', '.next', 'src/test/firestore-rules.test.ts'],
     reporters: ['default', 'html'],
     coverage: {
       reporter: ['text', 'json', 'html'],

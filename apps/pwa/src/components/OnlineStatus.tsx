@@ -63,7 +63,7 @@ export default function OnlineStatus() {
     if (syncError) return 'Erro na Sincronização'
     if (isSyncing) return 'Sincronizando...'
     if (pendingCount > 0) return `${pendingCount} pendente${pendingCount > 1 ? 's' : ''}`
-    return 'Conectado'
+    return 'Rede ativa'
   }
 
   return (

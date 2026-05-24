@@ -21,20 +21,15 @@ export default function ServiceWorkerCleaner() {
         // Remover todos os listeners existentes
         const removeAllListeners = () => {
           try {
-            // Criar função stub que não faz nada
-            const noop = () => {}
-            
             // Substituir addEventListener para ignorar novos listeners
-            const originalAddEventListener = navigator.serviceWorker.addEventListener
-            navigator.serviceWorker.addEventListener = function(type: string, listener: any, options?: any) {
+            navigator.serviceWorker.addEventListener = function(type: string, _listener: any, _options?: any) {
               console.log(`🚫 Bloqueando listener SW: ${type}`)
               // Não fazer nada - ignorar completamente
             }
             
             // Substituir postMessage para interceptar
             if (navigator.serviceWorker.controller) {
-              const originalPostMessage = navigator.serviceWorker.controller.postMessage
-              navigator.serviceWorker.controller.postMessage = function(message: any, transfer?: any) {
+              navigator.serviceWorker.controller.postMessage = function(message: any, _transfer?: any) {
                 console.log('🚫 Bloqueando mensagem para SW:', message)
                 // Não enviar nada
               }
@@ -56,11 +51,20 @@ export default function ServiceWorkerCleaner() {
               configurable: true
             })
             
-            // Substituir register para bloquear registrations
+            // Permitir registros legítimos do próprio app
             const originalRegister = navigator.serviceWorker.register
-            navigator.serviceWorker.register = function() {
-              console.log('🚫 Bloqueando registro de novo Service Worker')
-              return Promise.reject(new Error('Service Worker registro bloqueado'))
+            navigator.serviceWorker.register = function(scriptURL: string | URL, options?: RegistrationOptions) {
+              // Permitir apenas o SW do nosso app
+              const allowedSW = ['/sw.js']
+              const url = typeof scriptURL === 'string' ? scriptURL : scriptURL.toString()
+              
+              if (allowedSW.some(allowed => url.endsWith(allowed))) {
+                console.log('✅ Permitindo registro do SW legítimo:', url)
+                return originalRegister.call(this, scriptURL, options)
+              } else {
+                console.log('🚫 Bloqueando registro de SW externo:', url)
+                return Promise.reject(new Error('Service Worker externo bloqueado'))
+              }
             }
             
           } catch (error) {
@@ -71,8 +75,12 @@ export default function ServiceWorkerCleaner() {
         // Limpar mensagens de ping/pong problemáticas
         const clearPingMessages = () => {
           // Interceptar window.postMessage que pode estar gerando pings
-          const originalPostMessage = window.postMessage
-          window.postMessage = function(message: any, targetOrigin: string, transfer?: any) {
+          const originalPostMessage = window.postMessage.bind(window)
+          window.postMessage = function(
+            message: any,
+            targetOriginOrOptions?: string | WindowPostMessageOptions,
+            transfer?: Transferable[]
+          ) {
             // Filtrar mensagens problemáticas
             if (message && (
               message.eventType === 'ping' ||
@@ -85,8 +93,11 @@ export default function ServiceWorkerCleaner() {
             }
             
             // Permitir outras mensagens
-            return originalPostMessage.call(this, message, targetOrigin, transfer)
-          }
+            if (typeof targetOriginOrOptions === 'string') {
+              return originalPostMessage(message, targetOriginOrOptions, transfer)
+            }
+            return originalPostMessage(message, targetOriginOrOptions)
+          } as typeof window.postMessage
         }
         
         // Executar todas as interceptações

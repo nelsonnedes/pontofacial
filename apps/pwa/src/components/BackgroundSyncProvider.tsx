@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useCallback, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useBackgroundSync } from '../hooks/useBackgroundSync';
 
 interface BackgroundSyncContextType {
@@ -85,9 +85,17 @@ export function BackgroundSyncProvider({ children }: BackgroundSyncProviderProps
     checkServiceWorkerStatus();
     const interval = setInterval(checkServiceWorkerStatus, 30000); // Verificar a cada 30 segundos
 
+    // Atualizar instantaneamente quando o SW assumir o controle
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', checkServiceWorkerStatus);
+    }
+
     return () => {
       isActive = false; // Marcar como inativo
       clearInterval(interval);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('controllerchange', checkServiceWorkerStatus);
+      }
     };
   }, [mounted]); // Remover backgroundSync da dependência
 
@@ -97,8 +105,8 @@ export function BackgroundSyncProvider({ children }: BackgroundSyncProviderProps
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('Ponto Facial', {
         body: message,
-        icon: '/icon-192x192.png',
-        badge: '/icon-72x72.png',
+        icon: '/icons/icon-192x192.png?v=20260524-icon-v2',
+        badge: '/icons/icon-72x72.png?v=20260524-icon-v2',
         tag: 'sync-notification',
         silent: type === 'success' // Silencioso para sucessos, com som para erros
       });

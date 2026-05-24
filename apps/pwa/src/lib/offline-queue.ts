@@ -1,4 +1,7 @@
 import Dexie, { Table } from 'dexie';
+import { db as firebaseDb, getFirebaseApp } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // Interface para pendências da fila offline
 export interface Pendencia {
@@ -24,6 +27,7 @@ export interface OfflineTimeRecord {
     address?: string;
   };
   faceEmbedding?: string; // Embedding facial criptografado
+  metadata?: Record<string, any>;
   deviceInfo: {
     userAgent: string;
     platform: string;
@@ -52,16 +56,16 @@ class OfflineDatabase extends Dexie {
     });
 
     // Hooks para timestamps automáticos
-    this.timeRecords.hook('creating', (primKey, obj, trans) => {
+    this.timeRecords.hook('creating', (_primKey, obj, _trans) => {
       obj.createdAt = Date.now();
       obj.updatedAt = Date.now();
     });
 
-    this.timeRecords.hook('updating', (modifications, primKey, obj, trans) => {
+    this.timeRecords.hook('updating', (modifications, _primKey, _obj, _trans) => {
       (modifications as any).updatedAt = Date.now();
     });
 
-    this.pendencias.hook('creating', (primKey, obj, trans) => {
+    this.pendencias.hook('creating', (_primKey, obj, _trans) => {
       obj.createdAt = Date.now();
     });
   }
@@ -109,13 +113,6 @@ export class OfflineQueueManager {
       updatedAt: Date.now()
     });
 
-    // Adicionar à fila genérica também
-    await this.enqueue({
-      type: 'time_record',
-      timeRecordId: id,
-      ...record
-    });
-
     return id;
   }
 
@@ -126,7 +123,14 @@ export class OfflineQueueManager {
     for (const p of all) {
       try {
         await consumer(p);
-        await db.pendencias.update(p.id!, { status: 'synced' });
+        await db.pendencias.update(p.id!, {
+          status: 'synced',
+          payload: {
+            purged: true,
+            purgedAt: Date.now(),
+            originalType: p.payload?.type || p.payload?.tipo || 'unknown'
+          }
+        });
       } catch (error) {
         await db.pendencias.update(p.id!, { 
           status: 'failed',
@@ -143,12 +147,37 @@ export class OfflineQueueManager {
     if (this.isProcessing) return;
     
     this.isProcessing = true;
-    this.processingInterval = setInterval(() => {
-      this.processQueue();
-    }, 5000); // Processar a cada 5 segundos
+    
+    // Resetar registros que ficaram presos no status "syncing" por falha abrupta
+    this.resetStuckSyncingRecords().then(() => {
+      this.processingInterval = setInterval(() => {
+        this.processQueue();
+      }, 5000); // Processar a cada 5 segundos
 
-    // Processar imediatamente
-    this.processQueue();
+      // Processar imediatamente
+      this.processQueue();
+    });
+  }
+
+  // Liberar registros que ficaram presos em "syncing"
+  private async resetStuckSyncingRecords(): Promise<void> {
+    try {
+      const cutoff = Date.now() - 60000; // 1 minuto
+      const stuckRecords = await db.timeRecords
+        .where('syncStatus')
+        .equals('syncing')
+        .toArray();
+        
+      const toReset = stuckRecords.filter(r => (r.lastSyncAttempt || 0) < cutoff);
+      if (toReset.length > 0) {
+        console.log(`🔄 Resetando ${toReset.length} registros presos em 'syncing'...`);
+        await Promise.all(toReset.map(r => 
+          db.timeRecords.update(r.id!, { syncStatus: 'pending' })
+        ));
+      }
+    } catch (e) {
+      console.warn('⚠️ Erro ao resetar registros presos:', e);
+    }
   }
 
   // Parar processamento automático
@@ -206,6 +235,16 @@ export class OfflineQueueManager {
 
       // Preparar dados para o Firestore
       const firestoreData = {
+        // Campos do esquema novo (timeRecords)
+        userId: record.userId,
+        type: record.type,
+        timestamp: record.timestamp,
+        clientTimestamp: record.timestamp,
+        clientRecordId: `${record.userId}-${record.id || record.createdAt || record.timestamp}-${record.type}`,
+        location: record.location,
+        faceEvidence: record.faceEmbedding,
+        
+        // Campos do esquema antigo (marcacoes) mantidos para compatibilidade
         usuarioId: record.userId,
         tipo: this.mapTypeToFirestore(record.type),
         dataHoraTZ: new Date(record.timestamp).toISOString(),
@@ -215,43 +254,30 @@ export class OfflineQueueManager {
           precisao: record.location.accuracy,
           endereco: record.location.address
         } : null,
-        faceEmbedding: record.faceEmbedding,
+        
+        // Campos comuns
         deviceInfo: record.deviceInfo,
+        metadata: record.metadata,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      // Enviar para AMBAS as coleções para garantir compatibilidade
+      // O ponto agora e criado por Cloud Function autoritativa, que tambem
+      // mantem o espelho legado em marcacoes para os paineis antigos.
+      console.log('💾 Sincronizando ponto via Cloud Function markPoint...');
       
-      // 1. Enviar para coleção 'timeRecords' (nova estrutura)
-      const responseTimeRecords = await this.sendToFirestore('timeRecords', firestoreData);
-      
-      // 2. Enviar para coleção 'marcacoes' (compatibilidade com sistema existente)
-      const marcacaoData = {
-        usuarioId: record.userId,
-        tipo: this.mapTypeToFirestore(record.type),
-        dataHoraTZ: new Date(record.timestamp).toISOString(),
-        gps: record.location ? {
-          lat: record.location.latitude,
-          lng: record.location.longitude,
-          accuracy: record.location.accuracy
-        } : null,
-        faceEmbedding: record.faceEmbedding,
-        deviceInfo: record.deviceInfo,
-        metadata: record.metadata,
-      };
-      const responseMarcacoes = await this.sendToFirestore('marcacoes', marcacaoData);
-      
-      // Considerar sucesso se pelo menos uma das operações funcionou
-      const response = { 
-        ok: responseTimeRecords.ok || responseMarcacoes.ok, 
-        status: responseTimeRecords.ok ? responseTimeRecords.status : responseMarcacoes.status 
-      };
+      const response = await this.sendToFirestore('timeRecords', firestoreData);
+      console.log('✅ Registro salvo com sucesso pelo backend:', response.ok);
       
       if (response.ok) {
         await db.timeRecords.update(record.id!, {
           syncStatus: 'synced',
-          syncError: undefined
+          syncError: undefined,
+          faceEmbedding: undefined,
+          metadata: {
+            ...(record.metadata || {}),
+            facialEvidencePurgedAt: new Date().toISOString()
+          }
         });
         console.log('✅ Registro sincronizado com sucesso');
       } else {
@@ -275,7 +301,14 @@ export class OfflineQueueManager {
       const success = await this.processPayload(item.payload);
       
       if (success) {
-        await db.pendencias.update(item.id!, { status: 'synced' });
+        await db.pendencias.update(item.id!, {
+          status: 'synced',
+          payload: {
+            purged: true,
+            purgedAt: Date.now(),
+            originalType: item.payload?.type || item.payload?.tipo || 'unknown'
+          }
+        });
       } else {
         throw new Error('Processamento falhou');
       }
@@ -300,49 +333,81 @@ export class OfflineQueueManager {
     return typeMap[type] || type;
   }
 
-  // IMPLEMENTAÇÃO REAL para envio ao Firestore
+  // IMPLEMENTAÇÃO REAL para envio ao Firestore com validação robusta
   private async sendToFirestore(collectionName: string, data: any): Promise<{ ok: boolean; status: number }> {
     try {
-      console.log(`📤 Enviando REAL para ${collectionName}:`, data);
-      
-      // Importar Firebase dinamicamente para evitar problemas de SSR
-      const { db } = await import('@/lib/firebase');
-      const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+      // Validar dados de entrada primeiro
+      if (!data || typeof data !== 'object') {
+        console.error(`❌ Dados inválidos para ${collectionName}:`, data);
+        return { ok: false, status: 400 };
+      }
+
+      // Limpar dados problemáticos que podem causar erro 400
+      const cleanData = this.sanitizeFirestoreData(data);
+
+      if (collectionName === 'timeRecords' || collectionName === 'marcacoes') {
+        await this.sendToMarkPoint(cleanData);
+        return { ok: true, status: 200 };
+      }
       
       // Preparar dados para o Firestore com timestamp do servidor
       const firestoreData = {
-        ...data,
+        ...cleanData,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         origem: 'offline-sync',
+        syncVersion: '2.0', // Versão do sistema de sincronização
         // Campos específicos para compatibilidade
         ...(collectionName === 'marcacoes' ? {
-          dataHoraTZ: data.dataHoraTZ || new Date().toISOString(),
-          nsr: Date.now() % 100000, // Número sequencial simples
+          dataHoraTZ: cleanData.dataHoraTZ || new Date().toISOString(),
+          nsr: Math.floor(Date.now() / 1000) % 100000, // NSR baseado em timestamp
+          usuarioId: cleanData.userId || cleanData.usuarioId, // Normalizar campo
         } : {}),
         ...(collectionName === 'timeRecords' ? {
-          timestamp: new Date(data.timestamp || Date.now()),
+          timestamp: cleanData.timestamp || Date.now(), // NUMERO, não objeto Date
           processed: true,
-          syncedAt: serverTimestamp()
+          syncedAt: serverTimestamp(),
+          version: 2 // Versão dos registros de tempo
         } : {})
       };
 
-      // Enviar para o Firebase
-      const docRef = await addDoc(collection(db, collectionName), firestoreData);
+      // Remover campos undefined ou null que podem causar problemas
+      Object.keys(firestoreData).forEach(key => {
+        if (firestoreData[key] === undefined) {
+          delete firestoreData[key];
+        }
+      });
+
+      // Enviar para o Firebase com retry automático
+      const docRef = await this.retryOperation(() => 
+        addDoc(collection(firebaseDb, collectionName), firestoreData)
+      );
       
-      console.log(`✅ Documento criado com ID: ${docRef.id} em ${collectionName}`);
+      console.log(`✅ Documento salvo: ${docRef.id} em ${collectionName}`);
       return { ok: true, status: 200 };
       
     } catch (error) {
-      console.error(`❌ Erro ao enviar para Firestore (${collectionName}):`, error);
+      console.error(`❌ Erro detalhado ao enviar para ${collectionName}:`, {
+        error,
+        message: error instanceof Error ? error.message : 'Erro desconhecido',
+        stack: error instanceof Error ? error.stack?.split('\n')[0] : undefined
+      });
       
-      // Retornar detalhes do erro para debugging
+      // Análise específica do erro para debugging
       if (error instanceof Error) {
-        if (error.message.includes('permission')) {
+        const message = error.message.toLowerCase();
+        
+        if (message.includes('permission') || message.includes('insufficient')) {
+          console.log('🔒 Erro de permissão - verificar regras do Firestore');
           return { ok: false, status: 403 };
         }
-        if (error.message.includes('network') || error.message.includes('offline')) {
+        if (message.includes('network') || message.includes('offline') || message.includes('unavailable')) {
+          console.log('🌐 Erro de rede - tentará novamente quando online');
           return { ok: false, status: 503 };
+        }
+        if (message.includes('invalid') || message.includes('400')) {
+          console.log('📝 Dados inválidos - verificar formato dos dados');
+          return { ok: false, status: 400 };
         }
       }
       
@@ -350,11 +415,164 @@ export class OfflineQueueManager {
     }
   }
 
+  private async sendToMarkPoint(data: any): Promise<void> {
+    const app = getFirebaseApp();
+    if (!app) {
+      throw new Error('Firebase não inicializado');
+    }
+
+    const functions = getFunctions(app, 'us-east1');
+    const markPoint = httpsCallable(functions, 'markPoint');
+    const type = this.normalizePointType(data);
+    const userId = data.userId || data.usuarioId || data.uid;
+    const response = await markPoint({
+      userId,
+      type,
+      clientTimestamp: data.clientTimestamp || data.timestamp,
+      clientRecordId: data.clientRecordId || `${userId || 'auth'}-${data.timestamp || data.dataHoraTZ || data.createdAt || Date.now()}-${type}`,
+      location: this.normalizePointLocation(data),
+      faceEvidence: data.faceEvidence || data.faceEmbedding || data.photoEvidence || data.dataUrl,
+      deviceInfo: data.deviceInfo,
+      metadata: data.metadata
+    });
+    const payload = response.data as { success?: boolean; recordId?: string; nsr?: number };
+
+    if (!payload?.success) {
+      throw new Error('Backend recusou o registro de ponto');
+    }
+
+    console.log('✅ markPoint confirmado:', {
+      recordId: payload.recordId,
+      nsr: payload.nsr
+    });
+  }
+
+  private normalizePointType(data: any): string {
+    const typeMap: Record<string, string> = {
+      entrada: 'entry',
+      saida: 'exit',
+      intervalo_inicio: 'break_start',
+      intervalo_fim: 'break_end',
+      entry: 'entry',
+      exit: 'exit',
+      break_start: 'break_start',
+      break_end: 'break_end'
+    };
+    const rawType = String(data.type || data.tipo || 'entry');
+    return typeMap[rawType] || rawType;
+  }
+
+  private normalizePointLocation(data: any) {
+    if (data.location) {
+      return data.location;
+    }
+
+    const latitude = Number(
+      data.localizacao?.latitude ??
+      data.gps?.latitude ??
+      data.gps?.lat ??
+      data.lat
+    );
+    const longitude = Number(
+      data.localizacao?.longitude ??
+      data.gps?.longitude ??
+      data.gps?.lng ??
+      data.lng
+    );
+    const accuracy = Number(
+      data.localizacao?.precisao ??
+      data.gps?.accuracy ??
+      data.acc
+    );
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return undefined;
+    }
+
+    return {
+      latitude,
+      longitude,
+      accuracy: Number.isFinite(accuracy) ? accuracy : 0,
+      address: data.localizacao?.endereco
+    };
+  }
+
+  // Nova função para limpar dados antes de enviar ao Firestore
+  private sanitizeFirestoreData(data: any): any {
+    const cleaned = { ...data };
+    
+    // Remover ou limpar campos problemáticos
+    if (cleaned.faceEmbedding && typeof cleaned.faceEmbedding === 'string') {
+      try {
+        if (cleaned.faceEmbedding.length > 50000) {
+          console.warn('⚠️ Face embedding muito grande, removendo');
+          delete cleaned.faceEmbedding;
+        }
+      } catch {
+        delete cleaned.faceEmbedding;
+      }
+    }
+    
+    // Limpar dataUrl se muito grande
+    if (cleaned.dataUrl && typeof cleaned.dataUrl === 'string') {
+      if (cleaned.dataUrl.length > 1000000) {
+        console.warn('⚠️ DataURL muito grande, removendo');
+        delete cleaned.dataUrl;
+      }
+    }
+    
+    // Normalizar campos de localização
+    if (cleaned.location) {
+      cleaned.location = {
+        latitude: Number(cleaned.location.latitude) || 0,
+        longitude: Number(cleaned.location.longitude) || 0,
+        accuracy: Number(cleaned.location.accuracy) || 0
+      };
+    }
+    
+    // Garantir que timestamps são válidos
+    if (cleaned.timestamp && isNaN(new Date(cleaned.timestamp).getTime())) {
+      cleaned.timestamp = Date.now();
+    }
+    
+    return cleaned;
+  }
+
+  // Nova função para retry de operações
+  private async retryOperation<T>(operation: () => Promise<T>, maxAttempts: number = 3): Promise<T> {
+    let lastError: Error;
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        console.warn(`⚠️ Tentativa ${attempt}/${maxAttempts} falhou:`, error);
+        
+        if (attempt < maxAttempts) {
+          // Aguardar antes da próxima tentativa (backoff exponencial)
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    throw lastError!;
+  }
+
   // Processar payload genérico
   private async processPayload(payload: any): Promise<boolean> {
-    console.log('📤 Processando payload:', payload);
-    // Implementar lógica específica baseada no tipo do payload
-    return true;
+    console.log('📤 Processando payload legado:', payload);
+    try {
+      if (payload.type === 'time_record') {
+        return true; // Já foi processado pela nova coleção
+      }
+      // Processamento legado se houver algo preso na fila antiga
+      await this.sendToMarkPoint(this.sanitizeFirestoreData(payload));
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   // Obter estatísticas da fila
@@ -362,9 +580,12 @@ export class OfflineQueueManager {
     pending: number;
     syncing: number;
     synced: number;
+    processing: number;
+    completed: number;
     failed: number;
     totalTimeRecords: number;
     unsyncedTimeRecords: number;
+    syncedTimeRecords: number;
   }> {
     const [pendingPendencias, syncingPendencias, syncedPendencias, failedPendencias] = await Promise.all([
       db.pendencias.where('status').equals('pending').count(),
@@ -378,14 +599,21 @@ export class OfflineQueueManager {
       .where('syncStatus')
       .anyOf(['pending', 'syncing', 'failed'])
       .count();
+    const syncedTimeRecords = await db.timeRecords
+      .where('syncStatus')
+      .equals('synced')
+      .count();
 
     return {
       pending: pendingPendencias,
       syncing: syncingPendencias,
       synced: syncedPendencias,
+      processing: syncingPendencias,
+      completed: syncedTimeRecords,
       failed: failedPendencias,
       totalTimeRecords,
-      unsyncedTimeRecords
+      unsyncedTimeRecords,
+      syncedTimeRecords
     };
   }
 
@@ -404,16 +632,40 @@ export class OfflineQueueManager {
     }
 
     try {
+      const initialStats = await this.getQueueStats();
+      const initialPending =
+        initialStats.pending +
+        initialStats.syncing +
+        initialStats.failed +
+        initialStats.unsyncedTimeRecords;
+
       // Resetar itens falhados para pendente
       await db.pendencias.where('status').equals('failed').modify({ status: 'pending', retryCount: 0 });
       await db.timeRecords.where('syncStatus').equals('failed').modify({ syncStatus: 'pending', syncAttempts: 0 });
 
-      // Iniciar processamento
-      this.startProcessing();
+      // Processar de forma síncrona para a UI refletir o estado real da fila.
+      const maxPasses = 10;
+      for (let pass = 0; pass < maxPasses; pass++) {
+        await this.processQueue();
+        const stats = await this.getQueueStats();
+        const remaining = stats.pending + stats.syncing + stats.unsyncedTimeRecords;
 
-      // Contar itens processados
-      const stats = await this.getQueueStats();
-      const processed = stats.pending + stats.failed;
+        if (remaining === 0 || !navigator.onLine) {
+          break;
+        }
+      }
+
+      const finalStats = await this.getQueueStats();
+      const finalPending =
+        finalStats.pending +
+        finalStats.syncing +
+        finalStats.failed +
+        finalStats.unsyncedTimeRecords;
+      const processed = Math.max(0, initialPending - finalPending);
+
+      if (finalStats.failed > 0 || finalStats.unsyncedTimeRecords > 0) {
+        return { success: false, processed };
+      }
 
       return { success: true, processed };
     } catch (error) {
@@ -485,9 +737,6 @@ export default queueManager;
 export { queueManager as offlineQueueManager };
 export { OfflineDatabase as OfflineQueueDB };
 export { drain as drainQueue };
-
-// Re-exportar tipos para compatibilidade
-export type { OfflineTimeRecord, Pendencia };
 
 // Classe de configurações offline simples
 export class OfflineSettings {

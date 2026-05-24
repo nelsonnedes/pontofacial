@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { syncPending } from '@/lib/sync'
-import { OfflineQueueDB } from '@/lib/offline-queue'
+import { queueManager } from '@/lib/offline-queue'
 
 interface SyncStatus {
   isOnline: boolean
@@ -19,26 +18,27 @@ export function useSyncStatus() {
     lastSyncTime: null,
     syncError: null
   })
-  const [isClient, setIsClient] = useState(false)
   const isMountedRef = useRef(true)
   const syncInProgressRef = useRef(false)
-  
-  // Sincronização sempre habilitada (incluindo em desenvolvimento para testes)
-  const DISABLE_SYNC = false; // Mudou: agora sempre ativo para funcionar em produção
+  const pauseSyncRef = useRef(false) // NOVO: Pausar sincronização temporariamente
 
-  const updatePendingCount = async () => {
+  const updatePendingCount = useCallback(async () => {
     try {
-      const db = new OfflineQueueDB()
-      const count = await db.pendencias.count()
+      const stats = await queueManager.getQueueStats()
+      const count =
+        stats.pending +
+        stats.syncing +
+        stats.failed +
+        stats.unsyncedTimeRecords
       setStatus(prev => ({ ...prev, pendingCount: count }))
     } catch (error) {
       console.error('Erro ao contar pendências:', error)
     }
-  }
+  }, [])
 
   const performSync = useCallback(async () => {
-    if (DISABLE_SYNC) {
-      console.log('🚫 Sincronização desabilitada em desenvolvimento')
+    if (pauseSyncRef.current) {
+      console.log('⏸️ Sincronização pausada temporariamente')
       return
     }
     
@@ -51,8 +51,12 @@ export function useSyncStatus() {
     }
     
     try {
-      await syncPending()
+      const result = await queueManager.forceSyncAll()
       await updatePendingCount()
+
+      if (!result.success) {
+        throw new Error('Ainda há pendências que não puderam ser sincronizadas')
+      }
       
       if (isMountedRef.current) {
         setStatus(prev => ({ 
@@ -75,13 +79,12 @@ export function useSyncStatus() {
     } finally {
       syncInProgressRef.current = false
     }
-  }, [DISABLE_SYNC])
+  }, [updatePendingCount])
 
   useEffect(() => {
     isMountedRef.current = true
     
-    // Marcar como cliente e definir estado real de conectividade
-    setIsClient(true)
+    // Definir estado real de conectividade no cliente
     if (typeof navigator !== 'undefined') {
       setStatus(prev => ({ ...prev, isOnline: navigator.onLine }))
     }
@@ -96,14 +99,32 @@ export function useSyncStatus() {
       syncInProgressRef.current = false
       console.log('🟡 useSyncStatus cleanup')
     }
-  }, []) // Dependências vazias para executar apenas uma vez
+  }, [updatePendingCount])
+
+  useEffect(() => {
+    const handleOnline = () => {
+      if (!isMountedRef.current) return
+      setStatus(prev => ({ ...prev, isOnline: true }))
+      updatePendingCount()
+    }
+
+    const handleOffline = () => {
+      if (!isMountedRef.current) return
+      setStatus(prev => ({ ...prev, isOnline: false, isSyncing: false }))
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [updatePendingCount])
 
   // Sincronização periódica (habilitada para produção)
   useEffect(() => {
-    if (!status.isOnline || DISABLE_SYNC) {
-      if (DISABLE_SYNC) {
-        console.log('🚫 Sincronização periódica desabilitada em desenvolvimento')
-      }
+    if (!status.isOnline) {
       return
     }
 
@@ -119,11 +140,22 @@ export function useSyncStatus() {
     }, 30000) // Sincronizar a cada 30 segundos
 
     return () => clearInterval(interval)
-  }, [status.isOnline, DISABLE_SYNC, performSync, updatePendingCount, status.pendingCount])
+  }, [status.isOnline, performSync, updatePendingCount, status.pendingCount])
+
+  // NOVO: Função para pausar/despausar sincronização
+  const pauseSync = useCallback((duration = 60000) => {
+    pauseSyncRef.current = true
+    console.log(`⏸️ Sincronização pausada por ${duration}ms`)
+    setTimeout(() => {
+      pauseSyncRef.current = false
+      console.log('▶️ Sincronização reativada')
+    }, duration)
+  }, [])
 
   return {
     ...status,
     sync: performSync,
-    refreshCount: updatePendingCount
+    refreshCount: updatePendingCount,
+    pauseSync // NOVO: Exportar função de pausa
   }
 }

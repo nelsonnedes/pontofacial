@@ -1,0 +1,676 @@
+/* Estilos otimizados para o novo sistema de marcar ponto */
+
+/* Círculo oval para posicionamento facial */
+.face-oval-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 60vh;
+  min-height: 400px;
+}
+
+.face-oval {
+  width: min(280px, 80vw);
+  height: min(350px, 70vh);
+  border: 3px solid #3B82F6;
+  border-radius: 50%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: transparent; /* ✅ SEMPRE TRANSPARENTE PARA PRESERVAR VÍDEO */
+  animation: breathe 2s ease-in-out infinite;
+  transition: all 0.3s ease;
+  overflow: hidden; /* NOVO: Para cortar vídeo no formato oval */
+}
+
+/* NOVO: Vídeo dentro do círculo oval */
+.face-video-inside {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Preenche o círculo mantendo proporção */
+  z-index: 1; /* ✅ CRÍTICO: Vídeo sempre no topo dentro do círculo */
+  border-radius: 50%; /* Garante que vídeo fica redondo */
+  /* ✅ CORREÇÃO: Transform removido - aplicado via JavaScript inline com zoom */
+  background: transparent; /* ✅ FORÇA transparência */
+  opacity: 1; /* ✅ FORÇA visibilidade máxima */
+}
+
+/* ✅ CORREÇÃO: Overlay TRANSPARENTE - não interfere na captura */
+.countdown-overlay-transparent {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2; /* Sobre o vídeo */
+  pointer-events: none; /* Não interfere em cliques */
+}
+
+.countdown-badge {
+  background: rgba(0, 0, 0, 0.3); /* MUITO mais transparente */
+  padding: 8px 12px;
+  border-radius: 20px;
+  text-align: center;
+  backdrop-filter: blur(2px); /* Menos desfoque */
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* ✅ COUNTDOWN SIMPLES: Apenas número centralizado */
+.countdown-number-only {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  pointer-events: none; /* NÃO interfere em cliques/capturas */
+}
+
+.countdown-big {
+  font-size: 4rem; /* Número grande e visível */
+  font-weight: 900;
+  text-shadow: 
+    2px 2px 4px rgba(0, 0, 0, 0.8),
+    -1px -1px 2px rgba(255, 255, 255, 0.3); /* Contraste para visibilidade */
+  line-height: 1;
+  display: block;
+}
+
+.countdown-text-small {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  display: block;
+  margin-top: 2px;
+}
+
+/* Indicadores transparentes */
+.success-indicator-transparent {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 8px 12px;
+  border-radius: 12px;
+  backdrop-filter: blur(1px);
+  pointer-events: none;
+}
+
+/* Loading da câmera */
+.camera-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 2;
+}
+
+/* MANTER overlay original para fallback */
+.countdown-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2; /* Sobre o vídeo */
+  background: rgba(0, 0, 0, 0.7); /* Fundo semi-transparente */
+  padding: 12px 20px;
+  border-radius: 12px;
+  text-align: center;
+  backdrop-filter: blur(4px); /* Efeito de desfoque no fundo */
+}
+
+/* ✅ ESTADOS DO CÍRCULO OVAL - FUNDO TRANSPARENTE PARA PRESERVAR VÍDEO */
+.face-oval--waiting {
+  border-color: #3B82F6;
+  background: transparent; /* ✅ TRANSPARENTE - vídeo sempre visível */
+  animation: breathe 2s ease-in-out infinite;
+}
+
+.face-oval--detecting {
+  border-color: #F59E0B;
+  background: transparent; /* ✅ TRANSPARENTE - vídeo sempre visível */
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.face-oval--detected {
+  border-color: #10B981;
+  background: transparent; /* ✅ TRANSPARENTE - vídeo sempre visível */
+  animation: success-pulse 1s ease-in-out infinite;
+  border-width: 4px;
+}
+
+/* NOVO: Estados adicionais com fundo transparente */
+.face-oval--validating {
+  border-color: #8B5CF6;
+  background: transparent; /* ✅ TRANSPARENTE - vídeo sempre visível */
+  animation: validating-pulse 1.2s ease-in-out infinite;
+  border-width: 4px;
+}
+
+.face-oval--photo {
+  border-color: #10B981;
+  background: transparent; /* ✅ TRANSPARENTE - vídeo sempre visível */
+  animation: photo-ready 0.8s ease-in-out infinite;
+  border-width: 5px;
+}
+
+.face-oval--success {
+  border-color: #10B981;
+  background: transparent; /* ✅ TRANSPARENTE - vídeo sempre visível */
+  animation: success-complete 2s ease-in-out;
+  border-width: 6px;
+}
+
+.face-oval--retry {
+  border-color: #EF4444;
+  background: transparent; /* ✅ TRANSPARENTE - vídeo sempre visível */
+  animation: retry-pulse 1s ease-in-out infinite;
+  border-width: 3px;
+}
+
+.face-oval--failed {
+  border-color: #DC2626;
+  background: rgba(239, 68, 68, 0.05); /* ✅ MUITO SUTIL para indicar falha final */
+  animation: none;
+  border-width: 3px;
+}
+
+/* Animações */
+@keyframes breathe {
+  0%, 100% { 
+    transform: scale(1); 
+    opacity: 0.8; 
+  }
+  50% { 
+    transform: scale(1.02); 
+    opacity: 1; 
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { 
+    transform: scale(1); 
+    border-color: #F59E0B;
+  }
+  50% { 
+    transform: scale(1.03); 
+    border-color: #FBBF24;
+  }
+}
+
+@keyframes success-pulse {
+  0%, 100% { 
+    transform: scale(1); 
+    border-color: #10B981;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  50% { 
+    transform: scale(1.02); 
+    border-color: #34D399;
+    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+  }
+}
+
+/* NOVO: Animações para novos estados */
+@keyframes validating-pulse {
+  0%, 100% { 
+    transform: scale(1); 
+    border-color: #8B5CF6;
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4);
+  }
+  50% { 
+    transform: scale(1.03); 
+    border-color: #A78BFA;
+    box-shadow: 0 0 0 8px rgba(139, 92, 246, 0);
+  }
+}
+
+@keyframes photo-ready {
+  0%, 100% { 
+    transform: scale(1); 
+    border-color: #10B981;
+  }
+  25% { 
+    transform: scale(1.01); 
+    border-color: #34D399;
+  }
+  50% { 
+    transform: scale(1.02); 
+    border-color: #6EE7B7;
+  }
+  75% { 
+    transform: scale(1.01); 
+    border-color: #34D399;
+  }
+}
+
+@keyframes success-complete {
+  0% { 
+    transform: scale(1); 
+    border-color: #10B981;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+  }
+  50% { 
+    transform: scale(1.05); 
+    border-color: #34D399;
+    box-shadow: 0 0 0 20px rgba(16, 185, 129, 0);
+  }
+  100% { 
+    transform: scale(1); 
+    border-color: #10B981;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes retry-pulse {
+  0%, 100% { 
+    transform: scale(1); 
+    border-color: #EF4444;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% { 
+    transform: scale(1.02); 
+    border-color: #F87171;
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}
+
+/* Display do countdown */
+.countdown-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.countdown-number {
+  font-size: clamp(48px, 12vw, 72px);
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 8px;
+  animation: countdown-tick 1s ease-in-out;
+}
+
+.countdown-text {
+  font-size: clamp(14px, 3vw, 18px);
+  font-weight: 500;
+  color: #6B7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+@keyframes countdown-tick {
+  0% { transform: scale(1.2); opacity: 0; }
+  50% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Indicador de sucesso */
+.success-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  animation: success-appear 0.5s ease-out;
+}
+
+@keyframes success-appear {
+  0% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Responsividade mobile */
+@media (max-width: 640px) {
+  .face-oval-container {
+    height: 55vh; /* ✅ MOBILE: Altura otimizada */
+    min-height: 320px; /* ✅ MOBILE: Altura mínima maior */
+    padding: 1rem; /* ✅ MOBILE: Padding para evitar corte */
+  }
+  
+  .face-oval {
+    width: min(260px, 85vw); /* ✅ MOBILE: Círculo maior */
+    height: min(320px, 55vh); /* ✅ MOBILE: Altura proporcional */
+    border-width: 3px; /* ✅ MOBILE: Borda mais visível */
+    /* ✅ MOBILE: Touch-friendly */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  
+  .face-oval--detected {
+    border-width: 4px; /* ✅ MOBILE: Borda ainda mais visível */
+  }
+  
+  .countdown-number {
+    font-size: clamp(42px, 18vw, 72px); /* ✅ MOBILE: Números maiores */
+  }
+  
+  .countdown-text {
+    font-size: clamp(14px, 5vw, 18px); /* ✅ MOBILE: Texto maior */
+  }
+  
+  /* ✅ MOBILE: Vídeo otimizado */
+  .face-video-inside {
+    /* Melhor performance em mobile */
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+}
+
+/* Tablet */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .face-oval {
+    width: min(260px, 70vw);
+    height: min(325px, 65vh);
+  }
+}
+
+/* Desktop grande */
+@media (min-width: 1025px) {
+  .face-oval {
+    width: 320px;
+    height: 400px;
+  }
+  
+  .face-oval-container {
+    height: 65vh;
+  }
+}
+
+/* Melhorias nos cards de tipo */
+.type-card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.type-card-hover:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Melhorias no loading */
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Overlay para estados de transição */
+.transition-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  animation: overlay-appear 0.3s ease-out;
+}
+
+@keyframes overlay-appear {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Melhorias na tipografia */
+.text-gradient {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Estados de foco melhorados */
+.focus-ring {
+  transition: all 0.2s ease;
+}
+
+.focus-ring:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+}
+
+/* Animação de entrada suave */
+.fade-in {
+  animation: fade-in 0.5s ease-out;
+}
+
+@keyframes fade-in {
+  from { 
+    opacity: 0; 
+    transform: translateY(20px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+/* Animação de saída suave */
+.fade-out {
+  animation: fade-out 0.3s ease-in forwards;
+}
+
+@keyframes fade-out {
+  from { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+  to { 
+    opacity: 0; 
+    transform: translateY(-20px); 
+  }
+}
+
+/* Melhorias nos botões */
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Modo escuro (preparado para futuro) */
+@media (prefers-color-scheme: dark) {
+  .face-oval--waiting {
+    border-color: #60A5FA;
+    background: transparent; /* ✅ CRÍTICO: TRANSPARENTE para preservar vídeo */
+  }
+  
+  .face-oval--detecting {
+    border-color: #FBBF24;
+    background: transparent; /* ✅ CRÍTICO: TRANSPARENTE para preservar vídeo */
+  }
+  
+  .face-oval--detected {
+    border-color: #34D399;
+    background: transparent; /* ✅ CRÍTICO: TRANSPARENTE para preservar vídeo */
+  }
+  
+  /* ✅ NOVOS: Estados adicionais no modo escuro */
+  .face-oval--validating {
+    border-color: #A78BFA;
+    background: transparent;
+  }
+  
+  .face-oval--photo {
+    border-color: #6EE7B7;
+    background: transparent;
+  }
+  
+  .face-oval--success {
+    border-color: #34D399;
+    background: transparent;
+  }
+  
+  .face-oval--retry {
+    border-color: #F87171;
+    background: transparent;
+  }
+  
+  .face-oval--failed {
+    border-color: #F87171;
+    background: rgba(248, 113, 113, 0.03); /* Apenas sutil indicação de falha */
+  }
+}
+
+/* ✅ CRITICAL FIX: Força transparência em TODOS os estados possíveis */
+.face-oval,
+.face-oval[class*="--"],
+.face-oval::before,
+.face-oval::after {
+  background: transparent !important;
+}
+
+/* ✅ CRITICAL FIX: Exceção apenas para o estado de falha final */
+.face-oval--failed {
+  background: rgba(239, 68, 68, 0.05) !important; /* Sutil indicação de falha */
+}
+
+/* ✅ CRITICAL FIX: Garantir que vídeo esteja sempre visível */
+.face-video-inside {
+  visibility: visible !important;
+  opacity: 1 !important;
+  display: block !important;
+  pointer-events: none !important; /* Não interfere em cliques */
+}
+
+/* ✅ CRITICAL FIX: Garantir z-index correto para todos os elementos do círculo */
+.face-oval-container {
+  position: relative;
+  z-index: auto;
+}
+
+.face-oval {
+  position: relative;
+  z-index: auto;
+}
+
+.face-video-inside {
+  z-index: 1 !important; /* Vídeo sempre no topo dentro do círculo */
+}
+
+.countdown-number-only,
+.success-indicator-transparent,
+.camera-loading {
+  z-index: 2 !important; /* Elementos de interface sobre o vídeo */
+  pointer-events: none !important; /* Não interferem na captura */
+}
+
+/* ✅ MOBILE: Otimizações específicas para dispositivos móveis */
+@media (max-width: 768px) {
+  /* Prevenir zoom acidental */
+  input, select, textarea, button {
+    font-size: 16px !important; /* Previne zoom no iOS */
+  }
+  
+  /* Melhorar performance de scroll */
+  body {
+    -webkit-overflow-scrolling: touch;
+    overflow-scrolling: touch;
+  }
+  
+  /* Otimizar renderização */
+  .face-oval-container,
+  .face-oval,
+  .face-video-inside {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  /* Melhorar touch targets */
+  button, .btn, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+  }
+  
+  /* Prevenir seleção de texto */
+  .face-oval-container * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+/* ✅ MOBILE: Orientação landscape */
+@media (max-width: 768px) and (orientation: landscape) {
+  .face-oval-container {
+    height: 80vh;
+    min-height: 280px;
+  }
+  
+  .face-oval {
+    width: min(240px, 40vw);
+    height: min(300px, 70vh);
+  }
+}
+
+/* ✅ MOBILE: Dispositivos muito pequenos */
+@media (max-width: 360px) {
+  .face-oval-container {
+    height: 50vh;
+    min-height: 280px;
+    padding: 0.5rem;
+  }
+  
+  .face-oval {
+    width: min(220px, 90vw);
+    height: min(280px, 50vh);
+  }
+  
+  .countdown-number {
+    font-size: clamp(32px, 20vw, 56px);
+  }
+}
+
+/* Acessibilidade */
+@media (prefers-reduced-motion: reduce) {
+  .face-oval {
+    animation: none;
+  }
+  
+  .countdown-number {
+    animation: none;
+  }
+  
+  .success-indicator {
+    animation: none;
+  }
+  
+  .face-oval--waiting,
+  .face-oval--detecting,
+  .face-oval--detected {
+    animation: none;
+  }
+}

@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic';
 
-const MarcarPontoClient = dynamic(() => import('@/components/MarcarPontoClient'), {
+// Novo sistema otimizado de marcar ponto
+const SelectTypeScreen = dynamic(() => import('@/components/marcar-ponto/SelectTypeScreen'), {
   ssr: false,
   loading: () => (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -14,6 +15,8 @@ const MarcarPontoClient = dynamic(() => import('@/components/MarcarPontoClient')
   )
 });
 
+// O sistema antigo foi permanentemente removido para garantir 100% de segurança e evitar conflitos.
+
 export default function MarcarPonto() {
-  return <MarcarPontoClient />;
+  return <SelectTypeScreen />;
 }

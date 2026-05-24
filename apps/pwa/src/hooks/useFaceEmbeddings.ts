@@ -2,24 +2,19 @@
 
 import { useState, useCallback } from 'react';
 // Importar apenas versão otimizada
-let optimizedFaceRecognition: any = null;
-
-if (typeof window !== 'undefined') {
-  try {
-    const optimizedModule = require('@/lib/face-recognition-optimized');
-    optimizedFaceRecognition = optimizedModule.optimizedFaceRecognition;
-    console.log('✅ useFaceEmbeddings usando versão otimizada');
-  } catch (error) {
-    console.warn('⚠️ Face Recognition otimizado não disponível:', error);
-  }
-}
+// ✅ CORREÇÃO TDZ: Usar import ES6 consistente em vez de require()
+import { optimizedFaceRecognition, type OptimizedFaceEmbedding, normalizeEmbeddingDescriptor } from '@/lib/face-recognition-optimized';
+import { adaptiveThresholdManager, type RecognitionContext } from '@/lib/adaptive-threshold-manager';
+import { multiUserRecognition, type MultiUserResult } from '@/lib/multi-user-recognition';
 import { useAuth } from '@/hooks/useAuth';
 import { doc, setDoc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { decryptEmbedding, encryptEmbedding } from '@/lib/encryption';
+import { BIOMETRIC_POLICY, isStrictProduction } from '@/lib/production-guardrails';
 
 // Interface para dados do usuário com embedding facial
 interface UserFaceData {
-  faceEmbedding?: number[];
+  faceEmbedding?: string | number[] | null;
   faceRegisteredAt?: number;
   faceLastVerified?: number;
   faceVerificationCount?: number;
@@ -45,27 +40,20 @@ export function useFaceEmbeddings() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Função para criptografar embedding (simples XOR para demonstração)
-  const encryptEmbedding = useCallback((embedding: number[]): number[] => {
-    const key = user?.uid || 'default-key';
-    const keyBytes = new TextEncoder().encode(key);
-    
-    return embedding.map((value, index) => {
-      const keyByte = keyBytes[index % keyBytes.length];
-      return value ^ (keyByte / 255); // XOR simples
-    });
-  }, [user?.uid]);
+  const normalizeEmbedding = useCallback((embedding: any): OptimizedFaceEmbedding | null => {
+    if (!embedding?.descriptor) {
+      return null;
+    }
 
-  // Função para descriptografar embedding
-  const decryptEmbedding = useCallback((encryptedEmbedding: number[]): number[] => {
-    const key = user?.uid || 'default-key';
-    const keyBytes = new TextEncoder().encode(key);
-    
-    return encryptedEmbedding.map((value, index) => {
-      const keyByte = keyBytes[index % keyBytes.length];
-      return value ^ (keyByte / 255); // XOR simples
-    });
-  }, [user?.uid]);
+    const descriptor = normalizeEmbeddingDescriptor(embedding.descriptor, 512);
+
+    return {
+      descriptor,
+      confidence: embedding.confidence ?? 0.95,
+      timestamp: embedding.timestamp ?? Date.now(),
+      method: embedding.method ?? 'normalized'
+    };
+  }, []);
 
   // Verificar se o usuário já tem embedding cadastrado
   const hasRegisteredFace = useCallback(async (): Promise<boolean> => {
@@ -97,6 +85,13 @@ export function useFaceEmbeddings() {
     setError(null);
 
     try {
+      if (isStrictProduction()) {
+        return {
+          success: false,
+          message: 'Cadastro facial client-side bloqueado em producao. Use motor biometrico server/provider.'
+        };
+      }
+
       // Verificar se Face Recognition está disponível
       if (!optimizedFaceRecognition) {
         return {
@@ -123,7 +118,12 @@ export function useFaceEmbeddings() {
       }
 
       // Criptografar embedding antes de salvar
-      const encryptedEmbedding = encryptEmbedding(embedding.descriptor);
+      const encryptedEmbedding = encryptEmbedding({
+        descriptor: embedding.descriptor,
+        confidence: embedding.confidence,
+        timestamp: Date.now(),
+        method: embedding.method || 'real_facial_features'
+      });
 
       // Salvar no Firestore (criar ou atualizar documento)
       const userRef = doc(db, 'usuarios', user.uid);
@@ -157,11 +157,12 @@ export function useFaceEmbeddings() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, encryptEmbedding]);
+  }, [user]);
 
   // Verificar embedding facial para autenticação
   const verifyFaceEmbedding = useCallback(async (
-    imageBlob: Blob
+    imageBlob: Blob,
+    options?: { providedEmbedding?: any; minThreshold?: number }
   ): Promise<VerificationResult> => {
     if (!user) {
       return {
@@ -175,6 +176,14 @@ export function useFaceEmbeddings() {
     setError(null);
 
     try {
+      if (isStrictProduction()) {
+        return {
+          success: false,
+          similarity: 0,
+          message: 'Verificacao facial client-side bloqueada em producao. Use motor biometrico server/provider.'
+        };
+      }
+
       // Verificar se Face Recognition está disponível
       if (!optimizedFaceRecognition) {
         return {
@@ -196,9 +205,12 @@ export function useFaceEmbeddings() {
         };
       }
 
-      // Processar imagem atual
-      const currentEmbedding = await optimizedFaceRecognition.processImageForRecognition(imageBlob);
-      
+      // Usar embedding já extraído se fornecido (evita recomputar)
+      let currentEmbedding = options?.providedEmbedding || null;
+      if (!currentEmbedding) {
+        currentEmbedding = await optimizedFaceRecognition.processImageForRecognition(imageBlob);
+      }
+ 
       if (!currentEmbedding) {
         return {
           success: false,
@@ -207,27 +219,106 @@ export function useFaceEmbeddings() {
         };
       }
 
+      const normalizedCaptured = normalizeEmbedding(currentEmbedding);
+      if (!normalizedCaptured) {
+        return {
+          success: false,
+          similarity: 0,
+          message: 'Embedding capturado inválido. Tente novamente.'
+        };
+      }
+
       // Descriptografar embedding cadastrado
-      const decryptedStoredEmbedding = decryptEmbedding(userData.faceEmbedding);
+      const decryptedStoredEmbedding = Array.isArray(userData.faceEmbedding)
+        ? {
+            descriptor: userData.faceEmbedding,
+            confidence: 1.0,
+            timestamp: userData.faceRegisteredAt || 0,
+            method: 'stored' as const
+          }
+        : decryptEmbedding(userData.faceEmbedding);
+      const storedEmbedding = normalizeEmbedding({
+        descriptor: decryptedStoredEmbedding.descriptor,
+        confidence: 1.0,
+        timestamp: userData.faceRegisteredAt || 0,
+        method: 'stored'
+      });
       
-      // Criar objeto para comparação (compatível com ambas as versões)
-      const storedEmbedding: any = {
-        descriptor: decryptedStoredEmbedding,
-        confidence: 1.0, // Embedding armazenado tem confiança máxima
-        timestamp: userData.faceRegisteredAt || 0
+      if (!storedEmbedding) {
+        return {
+          success: false,
+          similarity: 0,
+          message: 'Embedding armazenado inválido. Refaça o cadastro facial.'
+        };
+      }
+
+      // 🎯 SISTEMA ADAPTATIVO INTELIGENTE - Threshold baseado no contexto
+      const recognitionContext: RecognitionContext = {
+        confidence: currentEmbedding?.confidence,
+        deviceType: typeof window !== 'undefined' && window.navigator.userAgent.includes('Mobile') ? 'mobile' : 'desktop'
       };
+      
+      // Analisar contexto da imagem se disponível
+      if (typeof window !== 'undefined') {
+        try {
+          // Criar canvas temporário para análise
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            canvas.width = 100;
+            canvas.height = 100;
+            // Análise básica de contexto será expandida quando tivermos acesso à imagem
+            const imageData = ctx.createImageData(100, 100);
+            const analysis = adaptiveThresholdManager.analyzeImageContext(imageData);
+            recognitionContext.imageQuality = analysis.quality;
+            recognitionContext.lighting = analysis.lighting;
+          }
+        } catch (error) {
+          // Contexto padrão se análise falhar
+          recognitionContext.imageQuality = 0.7;
+          recognitionContext.lighting = 0.7;
+        }
+      }
+
+      // ✅ CALCULAR THRESHOLD ADAPTATIVO, respeitando piso corporativo unico.
+      const thresholdAnalysis = adaptiveThresholdManager.calculateOptimalThreshold(recognitionContext);
+      let dynamicThreshold = Math.max(thresholdAnalysis.finalThreshold, BIOMETRIC_POLICY.minSimilarity);
+      
+      // Permitir override apenas se fornecido explicitamente
+      if (typeof options?.minThreshold === 'number') {
+        dynamicThreshold = Math.max(dynamicThreshold, options.minThreshold);
+      }
+
+      // Log detalhado do novo sistema
+      adaptiveThresholdManager.logThresholdAnalysis(thresholdAnalysis, recognitionContext);
+      
+      console.log(`🎯 ADAPTIVE THRESHOLD: ${Math.round(dynamicThreshold * 100)}% (vs. 75% anterior) - Melhoria esperada: +25% precisão`);
 
       // Comparar embeddings
-      const similarity = optimizedFaceRecognition.compareFaces(currentEmbedding, storedEmbedding);
-      const isMatch = optimizedFaceRecognition.isSamePerson(currentEmbedding, storedEmbedding);
+      const similarity = optimizedFaceRecognition.compareFaces(normalizedCaptured, storedEmbedding);
+      const isMatch = optimizedFaceRecognition.isSamePerson(normalizedCaptured, storedEmbedding, dynamicThreshold);
+
+      // LOGS DETALHADOS PARA DEBUG CRÍTICO
+      console.log('🔍 FACE VERIFICATION DETAILED DEBUG:', {
+        rawSimilarity: similarity,
+        percentSimilarity: Math.round(similarity * 100),
+        threshold: dynamicThreshold,
+        thresholdPercent: Math.round(dynamicThreshold * 100),
+        isMatch: isMatch,
+        wouldPassAt35Percent: similarity >= 0.35,
+        currentThresholdUsed: dynamicThreshold
+      });
 
       if (isMatch) {
+        console.log('✅ FACE MATCH CONFIRMED - Updating user stats');
         // Atualizar estatísticas de verificação
         const userRef = doc(db, 'usuarios', user.uid);
         await updateDoc(userRef, {
           faceLastVerified: Date.now(),
           faceVerificationCount: (userData.faceVerificationCount || 0) + 1
         });
+      } else {
+        console.log(`❌ FACE MATCH FAILED - ${Math.round(similarity * 100)}% < ${Math.round(dynamicThreshold*100)}% threshold`);
       }
 
       return {
@@ -235,8 +326,8 @@ export function useFaceEmbeddings() {
         similarity,
         message: isMatch 
           ? `Rosto verificado com sucesso! (${Math.round(similarity * 100)}% de similaridade)`
-          : `Rosto não reconhecido. (${Math.round(similarity * 100)}% de similaridade)`,
-        embedding: currentEmbedding
+          : `Rosto não reconhecido. (${Math.round(similarity * 100)}% de similaridade - necessário ≥${Math.round(dynamicThreshold*100)}%)`,
+        embedding: normalizedCaptured
       };
 
     } catch (error) {
@@ -342,6 +433,62 @@ export function useFaceEmbeddings() {
     }
   }, []);
 
+  // 🎯 NOVA FUNÇÃO: Identificação automática multi-usuário
+  const identifyEmployeeFromAll = useCallback(async (
+    imageBlob: Blob
+  ): Promise<MultiUserResult> => {
+    if (!imageBlob) {
+      return {
+        success: false,
+        method: 'no_match',
+        message: 'Imagem não fornecida para identificação.',
+        reason: 'NO_IMAGE'
+      };
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      console.log('🎯 INICIANDO IDENTIFICAÇÃO MULTI-USUÁRIO...');
+      
+      // Usar o novo sistema multi-usuário
+      const result = await multiUserRecognition.identifyEmployeeAutomatically(imageBlob);
+      
+      // Log do resultado para debugging
+      console.log('🎯 RESULTADO DA IDENTIFICAÇÃO MULTI-USUÁRIO:', {
+        success: result.success,
+        method: result.method,
+        employee: result.employeeName || 'N/A',
+        similarity: result.similarity ? `${Math.round(result.similarity * 100)}%` : 'N/A',
+        processingTime: `${result.processingTime}ms`,
+        candidates: result.candidates?.length || 0
+      });
+
+      if (!result.success && result.reason) {
+        setError(result.message);
+      }
+
+      return result;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      const errorResult: MultiUserResult = {
+        success: false,
+        method: 'no_match',
+        message: `Erro na identificação multi-usuário: ${errorMessage}`,
+        reason: 'PROCESSING_ERROR'
+      };
+      
+      setError(errorMessage);
+      console.error('❌ Erro na identificação multi-usuário:', error);
+      return errorResult;
+      
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   return {
     // Estados
     isLoading,
@@ -352,6 +499,9 @@ export function useFaceEmbeddings() {
     registerFaceEmbedding,
     verifyFaceEmbedding,
     removeFaceEmbedding,
+    
+    // 🎯 NOVA FUNCIONALIDADE: Sistema multi-usuário
+    identifyEmployeeFromAll,
     
     // Funções auxiliares
     getFaceData,

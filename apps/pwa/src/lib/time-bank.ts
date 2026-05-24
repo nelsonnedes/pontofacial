@@ -414,7 +414,7 @@ export function formatHoursBalance(hours: number): string {
 /**
  * Validar registro de ponto
  */
-export function validateTimeRecord(record: TimeRecord, schedule: WorkSchedule): Array<string> {
+export function validateTimeRecord(record: TimeRecord, _schedule: WorkSchedule): Array<string> {
   const errors = [];
 
   if (record.entries.length === 0) {
@@ -464,7 +464,7 @@ export function validateTimeRecord(record: TimeRecord, schedule: WorkSchedule): 
   return errors;
 }
 
-export default {
+const timeBank = {
   timeToMinutes,
   minutesToTime,
   minutesToHours,
@@ -477,3 +477,5 @@ export default {
   formatHoursBalance,
   validateTimeRecord
 };
+
+export default timeBank;

@@ -20,9 +20,32 @@ export function useBackgroundSync(options: BackgroundSyncOptions = {}) {
   const isProduction = process.env.NODE_ENV === 'production';
 
   const serviceWorkerRef = useRef<ServiceWorker | null>(null);
-  const messageChannelRef = useRef<MessageChannel | null>(null);
   const [mounted, setMounted] = useState(false);
-  const cleanupRef = useRef<(() => void) | null>(null);
+
+  const getActiveServiceWorker = useCallback(async (): Promise<ServiceWorker | null> => {
+    if (!mounted || typeof navigator === 'undefined' || !('serviceWorker' in navigator) || !isProduction) {
+      return null;
+    }
+
+    if (serviceWorkerRef.current) {
+      return serviceWorkerRef.current;
+    }
+
+    const controller = navigator.serviceWorker.controller;
+    if (controller) {
+      serviceWorkerRef.current = controller;
+      return controller;
+    }
+
+    const registration = await navigator.serviceWorker.getRegistration('/').catch(() => null);
+    const activeWorker = registration?.active || null;
+
+    if (activeWorker) {
+      serviceWorkerRef.current = activeWorker;
+    }
+
+    return activeWorker;
+  }, [mounted, isProduction]);
 
   useEffect(() => {
     setMounted(true);
@@ -80,11 +103,16 @@ export function useBackgroundSync(options: BackgroundSyncOptions = {}) {
 
   // Solicitar background sync com timeout
   const requestBackgroundSync = useCallback(() => {
-    if (serviceWorkerRef.current) {
+    getActiveServiceWorker().then((serviceWorker) => {
+      if (!serviceWorker) {
+        console.warn('Service Worker not available for background sync');
+        return;
+      }
+
       const messageId = `sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       
       try {
-        serviceWorkerRef.current.postMessage({
+        serviceWorker.postMessage({
           type: 'SYNC_REQUEST',
           id: messageId,
           timestamp: Date.now()
@@ -93,15 +121,15 @@ export function useBackgroundSync(options: BackgroundSyncOptions = {}) {
       } catch (error) {
         console.error('Falha ao solicitar background sync:', error);
       }
-    } else {
-      console.warn('Service Worker not available for background sync');
-    }
-  }, []);
+    });
+  }, [getActiveServiceWorker]);
 
   // Testar conectividade com Service Worker
   const pingServiceWorker = useCallback(() => {
     return new Promise((resolve, reject) => {
-      if (!serviceWorkerRef.current) {
+      const activeWorker = serviceWorkerRef.current || navigator.serviceWorker?.controller || null;
+
+      if (!activeWorker) {
         reject(new Error('Service Worker not available'));
         return;
       }
@@ -121,7 +149,7 @@ export function useBackgroundSync(options: BackgroundSyncOptions = {}) {
       };
 
       try {
-        serviceWorkerRef.current.postMessage(
+        activeWorker.postMessage(
           { type: 'PING', timestamp: Date.now() },
           [channel.port2]
         );
@@ -134,9 +162,11 @@ export function useBackgroundSync(options: BackgroundSyncOptions = {}) {
 
   // Notificar sobre itens pendentes
   const notifyPendingItems = useCallback(() => {
-    if (serviceWorkerRef.current) {
+    const activeWorker = serviceWorkerRef.current || navigator.serviceWorker?.controller || null;
+
+    if (activeWorker) {
       const messageId = `pending-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      serviceWorkerRef.current.postMessage({
+      activeWorker.postMessage({
         type: 'SYNC_REQUEST', // Usar tipo que o SW reconhece
         id: messageId,
         timestamp: Date.now()
@@ -154,7 +184,7 @@ export function useBackgroundSync(options: BackgroundSyncOptions = {}) {
       console.log('Starting queue processing...');
       
       // Processar com timeout de 30 segundos
-      const result = await Promise.race([
+      await Promise.race([
         offlineQueueManager.forceSyncAll(),
         new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Queue processing timeout')), 30000)
@@ -277,6 +307,10 @@ export function useBackgroundSync(options: BackgroundSyncOptions = {}) {
       case 'PONG':
         console.log('Service Worker respondeu ao ping:', timestamp);
         break;
+
+      case 'SW_UPDATED':
+        console.log('Service Worker atualizado:', timestamp);
+        break;
         
       default:
         console.log('Unknown message type from service worker:', type);
@@ -292,14 +326,16 @@ export function useBackgroundSync(options: BackgroundSyncOptions = {}) {
   // Obter status da sincronização
   const getSyncStatus = useCallback(async () => {
     const stats = await offlineQueueManager.getQueueStats();
+    const activeWorker = await getActiveServiceWorker();
+
     return {
       supported: isBackgroundSyncSupported(),
-      serviceWorkerActive: !!serviceWorkerRef.current,
+      serviceWorkerActive: !!activeWorker,
       pendingItems: stats.pending,
       processingItems: stats.processing,
       failedItems: stats.failed
     };
-  }, [isBackgroundSyncSupported]);
+  }, [getActiveServiceWorker, isBackgroundSyncSupported]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -318,13 +354,20 @@ export function useBackgroundSync(options: BackgroundSyncOptions = {}) {
       }, 1200);
     }
 
+    const handleControllerChange = () => {
+      serviceWorkerRef.current = navigator.serviceWorker?.controller || null;
+    };
+
+    getActiveServiceWorker();
     navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage);
+    navigator.serviceWorker?.addEventListener('controllerchange', handleControllerChange);
 
     return () => {
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
       navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage);
+      navigator.serviceWorker?.removeEventListener('controllerchange', handleControllerChange);
     };
   }, [mounted, autoRegister, registerServiceWorker, handleServiceWorkerMessage]);
 

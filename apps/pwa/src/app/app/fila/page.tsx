@@ -1,4 +1,5 @@
 'use client'
+import { notifyUser, confirmUser } from '@/lib/user-dialogs';
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { OfflineQueueDB, Pendencia, OfflineTimeRecord, queueManager } from '@/lib/offline-queue'
@@ -10,7 +11,8 @@ export default function FilaPage() {
   const [timeRecords, setTimeRecords] = useState<OfflineTimeRecord[]>([])
   const [isDebugMode, setIsDebugMode] = useState(false)
   const [isForcingSyncAll, setIsForcingSyncAll] = useState(false)
-  const { isOnline, isSyncing, pendingCount, lastSyncTime, syncError, sync, refreshCount } = useSyncStatus()
+  const { isOnline, isSyncing, lastSyncTime, syncError, sync, refreshCount } = useSyncStatus()
+  const isProduction = process.env.NODE_ENV === 'production'
 
   const loadPendencias = async () => {
     try {
@@ -39,7 +41,7 @@ export default function FilaPage() {
 
   const handleForceSyncAll = async () => {
     if (!isOnline) {
-      alert('Sem conexão com a internet!')
+      notifyUser('Sem conexão com a internet!')
       return
     }
     
@@ -51,7 +53,7 @@ export default function FilaPage() {
       const result = await queueManager.forceSyncAll()
       
       if (result.success) {
-        alert(`✅ Sincronização forçada concluída!\n${result.processed} itens processados.`)
+        notifyUser(`✅ Sincronização forçada concluída!\n${result.processed} itens processados.`)
       } else {
         throw new Error('Falha na sincronização forçada')
       }
@@ -59,7 +61,7 @@ export default function FilaPage() {
       await loadPendencias()
     } catch (error) {
       console.error('Erro na sincronização forçada:', error)
-      alert(`❌ Erro na sincronização forçada:\n${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+      notifyUser(`❌ Erro na sincronização forçada:\n${error instanceof Error ? error.message : 'Erro desconhecido'}`)
     } finally {
       setIsForcingSyncAll(false)
     }
@@ -67,7 +69,7 @@ export default function FilaPage() {
 
   const handleClearAll = async () => {
     const totalItems = pendencias.length + timeRecords.length
-    if (!confirm(`Tem certeza que deseja limpar todas as ${totalItems} pendência(s)?\n\n⚠️ Esta ação não pode ser desfeita!\n\nItens a serem removidos:\n• ${pendencias.length} pendências gerais\n• ${timeRecords.length} registros de tempo`)) {
+    if (!confirmUser(`Tem certeza que deseja limpar todas as ${totalItems} pendência(s)?\n\n⚠️ Esta ação não pode ser desfeita!\n\nItens a serem removidos:\n• ${pendencias.length} pendências gerais\n• ${timeRecords.length} registros de tempo`)) {
       return
     }
     
@@ -83,23 +85,18 @@ export default function FilaPage() {
       console.log('✅ Registros de tempo limpos')
       
       await loadPendencias()
-      alert('✅ Todas as pendências foram removidas!')
+      notifyUser('✅ Todas as pendências foram removidas!')
     } catch (error) {
       console.error('Erro ao limpar pendências:', error)
-      alert(`❌ Erro ao limpar pendências:\n${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+      notifyUser(`❌ Erro ao limpar pendências:\n${error instanceof Error ? error.message : 'Erro desconhecido'}`)
     }
   }
 
   useEffect(() => {
     loadPendencias()
   }, [])
-
-  // Recarregar quando a contagem de pendências mudar
-  useEffect(() => {
-    if (pendingCount !== pendencias.length) {
-      loadPendencias()
-    }
-  }, [pendingCount, pendencias.length])
+  // ✅ FIX: removido o useEffect que comparava pendingCount com pendencias.length
+  // pois causava loop: pendingCount → loadPendencias → setPendencias → renderiza → compara → loop
 
   function formatDate(timestamp: number) {
     return new Date(timestamp).toLocaleString('pt-BR')
@@ -162,26 +159,30 @@ export default function FilaPage() {
             >
               {isSyncing ? '🔄 Sincronizando...' : '📤 Sincronizar'}
             </button>
-            <button
-              onClick={handleForceSyncAll}
-              disabled={isForcingSyncAll || !isOnline || (pendencias.length === 0 && timeRecords.length === 0)}
-              className="px-3 py-2 text-sm bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600"
-            >
-              {isForcingSyncAll ? '🔄 Forçando...' : '⚡ Força Total'}
-            </button>
-            <button
-              onClick={() => setIsDebugMode(!isDebugMode)}
-              className="px-3 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600"
-            >
-              {isDebugMode ? '🔍 Menos Info' : '🔍 Debug'}
-            </button>
-            <button
-              onClick={handleClearAll}
-              disabled={pendencias.length === 0 && timeRecords.length === 0}
-              className="px-3 py-2 text-sm bg-red-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-600"
-            >
-              🗑️ Limpar Tudo
-            </button>
+            {!isProduction && (
+              <>
+                <button
+                  onClick={handleForceSyncAll}
+                  disabled={isForcingSyncAll || !isOnline || (pendencias.length === 0 && timeRecords.length === 0)}
+                  className="px-3 py-2 text-sm bg-purple-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-600"
+                >
+                  {isForcingSyncAll ? '🔄 Forçando...' : '⚡ Força Total'}
+                </button>
+                <button
+                  onClick={() => setIsDebugMode(!isDebugMode)}
+                  className="px-3 py-2 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                >
+                  {isDebugMode ? '🔍 Menos Info' : '🔍 Debug'}
+                </button>
+                <button
+                  onClick={handleClearAll}
+                  disabled={pendencias.length === 0 && timeRecords.length === 0}
+                  className="px-3 py-2 text-sm bg-red-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-600"
+                >
+                  🗑️ Limpar Tudo
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -193,8 +194,8 @@ export default function FilaPage() {
 
         {(pendencias.length === 0 && timeRecords.length === 0) ? (
           <div className="text-center py-8 text-gray-500">
-            <p>✅ Nenhuma marcação pendente</p>
-            <p className="text-sm mt-2">Todas as marcações foram sincronizadas</p>
+            <p>✅ Nenhuma pendência local</p>
+            <p className="text-sm mt-2">Confira o histórico para ver os registros confirmados pelo servidor</p>
           </div>
         ) : (
           <div className="space-y-6">

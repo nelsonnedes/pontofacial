@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
+import { useAccessProfile } from '@/hooks/useAccessProfile';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -14,8 +15,22 @@ interface SystemStats {
   lastSync: string;
 }
 
+function normalizeTimestamp(value: any): number {
+  if (!value) return 0;
+  if (typeof value === 'number') return value;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value.seconds === 'number') return value.seconds * 1000;
+  return 0;
+}
+
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const access = useAccessProfile();
   const [stats, setStats] = useState<SystemStats>({
     totalUsers: 0,
     todayRegistrations: 0,
@@ -36,10 +51,11 @@ export default function AdminDashboard() {
         console.log('📊 Carregando estatísticas reais do sistema...');
         
         // Buscar dados reais do Firebase
-        const [usersData, marcacoesData, timeRecordsData, geofencesData] = await Promise.allSettled([
-          // Contar usuários únicos (simulado - em produção seria via Admin SDK)
-          Promise.resolve({ count: 1 + Math.floor(Math.random() * 10) }), // Dados simulados mas realísticos
-          
+        const [usuariosData, usersData, employeesData, marcacoesData, timeRecordsData, geofencesData] = await Promise.allSettled([
+          getDocs(collection(db, 'usuarios')),
+          getDocs(collection(db, 'users')),
+          getDocs(collection(db, 'employees')),
+
           // Contar registros de marcações de hoje
           getDocs(collection(db, 'marcacoes')),
           
@@ -55,41 +71,45 @@ export default function AdminDashboard() {
         let todayRegistrations = 0;
         let activeGeofences = 0;
 
-        // Usuários totais (simulado)
+        // Usuários/funcionários reais, deduplicados por id
+        const knownPeople = new Set<string>();
         if (usersData.status === 'fulfilled') {
-          totalUsers = usersData.value.count;
+          usersData.value.forEach((doc) => knownPeople.add(doc.id));
         }
+        if (usuariosData.status === 'fulfilled') {
+          usuariosData.value.forEach((doc) => knownPeople.add(doc.id));
+        }
+        if (employeesData.status === 'fulfilled') {
+          employeesData.value.forEach((doc) => knownPeople.add(doc.id));
+        }
+        totalUsers = knownPeople.size;
 
         // Marcações de hoje
         const today = new Date();
         const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
         const endOfDay = startOfDay + 24 * 60 * 60 * 1000;
 
+        const seenToday = new Set<string>();
         if (marcacoesData.status === 'fulfilled') {
-          let todayCount = 0;
           marcacoesData.value.forEach((doc) => {
             const data = doc.data();
-            const timestamp = data.createdAt?.toMillis?.() || 0;
+            const timestamp = normalizeTimestamp(data.timestamp || data.dataHoraTZ || data.createdAt);
             if (timestamp >= startOfDay && timestamp < endOfDay) {
-              todayCount++;
+              seenToday.add(data.timeRecordId || doc.id);
             }
           });
-          todayRegistrations += todayCount;
-          console.log(`📊 Marcações hoje: ${todayCount}`);
         }
 
         if (timeRecordsData.status === 'fulfilled') {
-          let todayCount = 0;
           timeRecordsData.value.forEach((doc) => {
             const data = doc.data();
-            const timestamp = data.timestamp || 0;
+            const timestamp = normalizeTimestamp(data.timestamp || data.dataHoraTZ || data.createdAt);
             if (timestamp >= startOfDay && timestamp < endOfDay) {
-              todayCount++;
+              seenToday.add(doc.id);
             }
           });
-          todayRegistrations += todayCount;
-          console.log(`📊 TimeRecords hoje: ${todayCount}`);
         }
+        todayRegistrations = seenToday.size;
 
         // Geofences ativas
         if (geofencesData.status === 'fulfilled') {
@@ -138,7 +158,7 @@ export default function AdminDashboard() {
       value: stats.totalUsers,
       icon: '👥',
       color: 'blue',
-      description: 'Usuários cadastrados no sistema'
+      description: 'Usuários e funcionários cadastrados'
     },
     {
       title: 'Registros Hoje',
@@ -155,11 +175,11 @@ export default function AdminDashboard() {
       description: 'Geofences ativas'
     },
     {
-      title: 'Status do Sistema',
-      value: stats.systemStatus === 'online' ? 'Online' : 'Erro',
+      title: 'Leitura Firestore',
+      value: stats.systemStatus === 'online' ? 'Acessível' : 'Erro',
       icon: stats.systemStatus === 'online' ? '✅' : '❌',
       color: stats.systemStatus === 'online' ? 'green' : 'red',
-      description: 'Estado atual do sistema'
+      description: 'Resultado das leituras do dashboard'
     }
   ];
 
@@ -169,30 +189,42 @@ export default function AdminDashboard() {
       description: 'Criar e editar geofences',
       href: '/admin/geofences',
       icon: '🎯',
-      color: 'blue'
+      color: 'blue',
+      visible: access.isAdmin || access.hasPermission('admin:geofences')
     },
     {
-      title: 'Gerar Relatórios',
-      description: 'AFD, AEJ e outros relatórios',
+      title: 'Prévias de Relatórios',
+      description: 'AFD, AEJ e espelho operacional',
       href: '/admin/reports',
       icon: '📄',
-      color: 'green'
+      color: 'green',
+      visible: access.isAdmin || access.hasPermission('admin:reports')
     },
     {
       title: 'Configurações',
       description: 'Ajustes do sistema',
       href: '/admin/settings',
       icon: '⚙️',
-      color: 'gray'
+      color: 'gray',
+      visible: access.isAdmin || access.hasPermission('admin:settings')
     },
     {
       title: 'Gerenciar Usuários',
       description: 'Usuários e permissões',
       href: '/admin/users',
       icon: '👥',
-      color: 'purple'
+      color: 'purple',
+      visible: access.isAdmin || access.hasPermission('admin:users')
+    },
+    {
+      title: 'Manual do Sistema',
+      description: 'Instruções conforme suas permissões',
+      href: '/admin/manual',
+      icon: '📘',
+      color: 'blue',
+      visible: true
     }
-  ];
+  ].filter(action => action.visible);
 
   if (loading) {
     return (
@@ -307,9 +339,9 @@ export default function AdminDashboard() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="font-medium text-gray-600">Status do Banco de Dados:</span>
+            <span className="font-medium text-gray-600">Leitura do Firestore:</span>
             <span className={`ml-2 ${stats.systemStatus === 'online' ? 'text-green-600' : 'text-red-600'}`}>
-              {stats.systemStatus === 'online' ? '✅ Online' : '❌ Erro'}
+              {stats.systemStatus === 'online' ? '✅ Acessível' : '❌ Erro'}
             </span>
           </div>
           <div>

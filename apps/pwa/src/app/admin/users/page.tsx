@@ -1,7 +1,134 @@
 'use client';
 
+import { notifyUser, confirmUser } from '@/lib/user-dialogs';
 import { useState, useMemo } from 'react';
-import { useUsers, AppUser, CreateUserData, UpdateUserData } from '@/hooks/useUsers';
+import { useUsers, AppUser, AppUserRole, CreateUserData, UpdateUserData } from '@/hooks/useUsers';
+import {
+  DirectoryCompany,
+  DirectoryEmployee,
+  useUserProfileDirectory
+} from '@/hooks/useUserProfileDirectory';
+
+const roleOptions: Array<{ value: AppUserRole; label: string; description: string }> = [
+  {
+    value: 'employee',
+    label: 'Funcionário',
+    description: 'Bate ponto, vê comprovantes e cadastra a própria face.'
+  },
+  {
+    value: 'kiosk',
+    label: 'Portaria/Kiosk',
+    description: 'Uso fixo em portaria: marcação e verificação facial assistida.'
+  },
+  {
+    value: 'rh',
+    label: 'RH',
+    description: 'Funcionários, horários, registros, RH e relatórios operacionais.'
+  },
+  {
+    value: 'manager',
+    label: 'Gestor',
+    description: 'Consulta registros e relatórios da operação.'
+  },
+  {
+    value: 'admin',
+    label: 'Administrador',
+    description: 'Acesso total, inclusive usuários, empresas e configurações.'
+  }
+];
+
+function getRoleLabel(role?: AppUserRole) {
+  const option = roleOptions.find(item => item.value === role);
+  if (option) return option.label;
+  return role === 'user' ? 'Usuário' : 'Funcionário';
+}
+
+function getRoleClasses(role?: AppUserRole) {
+  if (role === 'admin') return 'bg-purple-100 text-purple-800';
+  if (role === 'rh') return 'bg-emerald-100 text-emerald-800';
+  if (role === 'manager') return 'bg-indigo-100 text-indigo-800';
+  if (role === 'kiosk') return 'bg-amber-100 text-amber-800';
+  return 'bg-blue-100 text-blue-800';
+}
+
+type UserFormState = {
+  email: string;
+  password: string;
+  name: string;
+  role: AppUserRole;
+  isActive: boolean;
+  employeeId: string;
+  empresaId: string;
+  department: string;
+  position: string;
+};
+
+const INITIAL_USER_FORM: UserFormState = {
+  email: '',
+  password: '',
+  name: '',
+  role: 'employee',
+  isActive: true,
+  employeeId: '',
+  empresaId: '',
+  department: '',
+  position: ''
+};
+
+function normalizeSearchText(value?: string) {
+  return (value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+function getEmployeeEmail(employee: DirectoryEmployee) {
+  return employee.corporateEmail || employee.email;
+}
+
+function getCompanyDisplayName(company?: DirectoryCompany, fallbackId?: string) {
+  if (!company) return fallbackId || 'Empresa não vinculada';
+  return company.name || company.legalName || company.id;
+}
+
+function getEmployeeCompanyId(employee?: DirectoryEmployee) {
+  return employee?.empresaId || employee?.companyId || '';
+}
+
+function getEmployeeReferenceValues(employee: DirectoryEmployee) {
+  return [
+    employee.id,
+    employee.registration,
+    employee.cpf,
+    employee.pisPasep,
+    employee.authUid,
+    employee.userId,
+    employee.email,
+    employee.corporateEmail
+  ].filter(Boolean).map(value => value.toLowerCase());
+}
+
+function findEmployeeByReference(employees: DirectoryEmployee[], reference?: string) {
+  const normalizedReference = reference?.trim().toLowerCase();
+  if (!normalizedReference) return undefined;
+
+  return employees.find(employee => getEmployeeReferenceValues(employee).includes(normalizedReference));
+}
+
+function hydrateFormFromEmployee(
+  form: UserFormState,
+  employee: DirectoryEmployee,
+  options: { preserveEmail: boolean }
+): UserFormState {
+  const employeeCompanyId = getEmployeeCompanyId(employee);
+
+  return {
+    ...form,
+    email: options.preserveEmail ? form.email : getEmployeeEmail(employee) || form.email,
+    name: employee.name || form.name,
+    employeeId: employee.id,
+    empresaId: employeeCompanyId || form.empresaId,
+    department: employee.department || form.department,
+    position: employee.position || form.position
+  };
+}
 
 export default function AdminUsersPage() {
   const {
@@ -13,51 +140,107 @@ export default function AdminUsersPage() {
     deleteUser,
     toggleUserStatus,
     refreshUsers,
-    clearError,
-    searchUsers
+    clearError
   } = useUsers();
+  const {
+    companies,
+    employees,
+    isLoading: directoryLoading,
+    error: directoryError,
+    refresh: refreshDirectory
+  } = useUserProfileDirectory();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
-  const [userForm, setUserForm] = useState<{
-    email: string;
-    password: string;
-    name: string;
-    role: 'user' | 'admin';
-    isActive: boolean;
-    employeeId: string;
-    department: string;
-    position: string;
-  }>({
-    email: '',
-    password: '',
-    name: '',
-    role: 'user',
-    isActive: true,
-    employeeId: '',
-    department: '',
-    position: ''
-  });
+  const [userForm, setUserForm] = useState<UserFormState>(INITIAL_USER_FORM);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Filtrar usuários com base na busca
+  const companyById = useMemo(() => {
+    return new Map(companies.map(company => [company.id, company]));
+  }, [companies]);
+
+  const employeeByProfileId = useMemo(() => {
+    const map = new Map<string, AppUser>();
+
+    for (const profile of users) {
+      const employee = findEmployeeByReference(employees, profile.employeeId || profile.funcionarioId);
+      const key = employee?.id || profile.employeeId || profile.funcionarioId;
+      if (key) {
+        map.set(key, profile);
+      }
+    }
+
+    return map;
+  }, [employees, users]);
+
+  const selectedEmployee = useMemo(() => {
+    return findEmployeeByReference(employees, userForm.employeeId);
+  }, [employees, userForm.employeeId]);
+
+  const selectedCompany = useMemo(() => {
+    return companyById.get(userForm.empresaId);
+  }, [companyById, userForm.empresaId]);
+
+  const employeesAvailableForSelectedCompany = useMemo(() => {
+    if (!userForm.empresaId) return employees;
+
+    return employees.filter(employee => {
+      const employeeCompanyId = getEmployeeCompanyId(employee);
+      return !employeeCompanyId || employeeCompanyId === userForm.empresaId;
+    });
+  }, [employees, userForm.empresaId]);
+
+  const employeesWithoutProfile = useMemo(() => {
+    return employees.filter(employee => {
+      const linkedProfile = employeeByProfileId.get(employee.id);
+      return !linkedProfile || linkedProfile.id === editingUser?.id;
+    }).length;
+  }, [editingUser?.id, employeeByProfileId, employees]);
+
+  // Filtrar usuários com base na busca e no diretório carregado
   const filteredUsers = useMemo(() => {
-    return searchUsers(searchTerm);
-  }, [searchUsers, searchTerm]);
+    const term = normalizeSearchText(searchTerm);
+    if (!term) return users;
+
+    return users.filter(user => {
+      const companyId = user.empresaId || user.companyId || '';
+      const employee = findEmployeeByReference(employees, user.employeeId || user.funcionarioId);
+      const company = companyById.get(companyId || getEmployeeCompanyId(employee));
+      const searchPool = [
+        user.email,
+        user.name,
+        user.displayName,
+        user.employeeId,
+        user.funcionarioId,
+        user.empresaId,
+        user.companyId,
+        user.department,
+        user.position,
+        user.role,
+        employee?.name,
+        employee?.email,
+        employee?.corporateEmail,
+        employee?.cpf,
+        employee?.registration,
+        employee?.department,
+        employee?.position,
+        company?.name,
+        company?.legalName,
+        company?.cnpj
+      ];
+
+      return searchPool.some(value => normalizeSearchText(value).includes(term));
+    });
+  }, [companyById, employees, searchTerm, users]);
 
   // Abrir modal para criar usuário
   const openCreateModal = () => {
+    const activeCompanies = companies.filter(company => company.isActive);
     setEditingUser(null);
     setUserForm({
-      email: '',
-      password: '',
-      name: '',
-      role: 'user',
-      isActive: true,
-      employeeId: '',
-      department: '',
-      position: ''
+      ...INITIAL_USER_FORM,
+      empresaId: activeCompanies.length === 1 ? activeCompanies[0].id : ''
     });
     setShowModal(true);
     clearError();
@@ -65,17 +248,22 @@ export default function AdminUsersPage() {
 
   // Abrir modal para editar usuário
   const openEditModal = (user: AppUser) => {
-    setEditingUser(user);
-    setUserForm({
+    const employee = findEmployeeByReference(employees, user.employeeId || user.funcionarioId);
+    const baseForm: UserFormState = {
+      ...INITIAL_USER_FORM,
       email: user.email,
       password: '', // Não mostrar senha existente
       name: user.name || '',
-      role: user.role || 'user',
+      role: user.role || 'employee',
       isActive: user.isActive,
-      employeeId: user.employeeId || '',
+      employeeId: user.employeeId || user.funcionarioId || '',
+      empresaId: user.empresaId || user.companyId || '',
       department: user.department || '',
       position: user.position || ''
-    });
+    };
+
+    setEditingUser(user);
+    setUserForm(employee ? hydrateFormFromEmployee(baseForm, employee, { preserveEmail: true }) : baseForm);
     setShowModal(true);
     clearError();
   };
@@ -84,28 +272,75 @@ export default function AdminUsersPage() {
   const closeModal = () => {
     setShowModal(false);
     setEditingUser(null);
-    setUserForm({
-      email: '',
-      password: '',
-      name: '',
-      role: 'user',
-      isActive: true,
-      employeeId: '',
-      department: '',
-      position: ''
-    });
+    setUserForm(INITIAL_USER_FORM);
     clearError();
+  };
+
+  const handleCompanyChange = (empresaId: string) => {
+    setUserForm(prev => {
+      const currentEmployee = findEmployeeByReference(employees, prev.employeeId);
+      const currentEmployeeCompanyId = getEmployeeCompanyId(currentEmployee);
+      const shouldClearEmployee = Boolean(
+        empresaId &&
+        currentEmployeeCompanyId &&
+        currentEmployeeCompanyId !== empresaId
+      );
+
+      return {
+        ...prev,
+        empresaId,
+        ...(shouldClearEmployee ? {
+          employeeId: '',
+          department: '',
+          position: ''
+        } : {})
+      };
+    });
+  };
+
+  const handleEmployeeSelect = (employeeId: string) => {
+    if (!employeeId) {
+      setUserForm(prev => ({
+        ...prev,
+        employeeId: '',
+        name: editingUser ? prev.name : '',
+        email: editingUser ? prev.email : '',
+        department: '',
+        position: ''
+      }));
+      return;
+    }
+
+    const employee = employees.find(item => item.id === employeeId);
+    if (!employee) {
+      setUserForm(prev => ({ ...prev, employeeId }));
+      return;
+    }
+
+    const linkedProfile = employeeByProfileId.get(employee.id);
+    const isLinkedToAnotherProfile = linkedProfile && linkedProfile.id !== editingUser?.id;
+    if (isLinkedToAnotherProfile) {
+      notifyUser(`❌ Este funcionário já está vinculado ao perfil ${linkedProfile.name || linkedProfile.email}.`);
+      return;
+    }
+
+    setUserForm(prev => hydrateFormFromEmployee(prev, employee, { preserveEmail: editingUser !== null }));
   };
 
   // Salvar usuário (criar ou editar)
   const handleSaveUser = async () => {
     if (!userForm.email.trim()) {
-      alert('❌ Email é obrigatório');
+      notifyUser('❌ Email é obrigatório');
       return;
     }
 
     if (!editingUser && !userForm.password.trim()) {
-      alert('❌ Senha é obrigatória para novos usuários');
+      notifyUser('❌ Senha é obrigatória para novos usuários');
+      return;
+    }
+
+    if (userForm.role === 'kiosk' && !userForm.empresaId.trim()) {
+      notifyUser('❌ Perfil Portaria/Kiosk precisa estar vinculado a uma empresa');
       return;
     }
 
@@ -121,15 +356,16 @@ export default function AdminUsersPage() {
           role: userForm.role,
           isActive: userForm.isActive,
           employeeId: userForm.employeeId.trim(),
+          empresaId: userForm.empresaId.trim(),
           department: userForm.department.trim(),
           position: userForm.position.trim()
         };
 
         await updateUser(editingUser.id, updates);
-        alert('✅ Usuário atualizado com sucesso!');
+        notifyUser('✅ Perfil atualizado com sucesso!');
       } else {
         // Criar novo usuário
-        console.log('➕ Criando novo usuário:', userForm.email);
+        console.log('➕ Criando novo perfil:', userForm.email);
         
         const userData: CreateUserData = {
           email: userForm.email.trim(),
@@ -138,18 +374,19 @@ export default function AdminUsersPage() {
           role: userForm.role,
           isActive: userForm.isActive,
           employeeId: userForm.employeeId.trim(),
+          empresaId: userForm.empresaId.trim(),
           department: userForm.department.trim(),
           position: userForm.position.trim()
         };
 
         await createUser(userData);
-        alert('✅ Usuário criado com sucesso!');
+        notifyUser('✅ Perfil criado com login seguro no Firebase Auth!');
       }
       
       closeModal();
     } catch (error: any) {
       console.error('❌ Erro ao salvar usuário:', error);
-      alert(`❌ Erro ao salvar usuário: ${error.message}`);
+      notifyUser(`❌ Erro ao salvar usuário: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -157,20 +394,20 @@ export default function AdminUsersPage() {
 
   // Deletar usuário
   const handleDeleteUser = async (user: AppUser) => {
-    const confirmDelete = window.confirm(
-      `⚠️ Tem certeza que deseja excluir o usuário "${user.name || user.email}"?\n\n` +
-      `Esta ação não pode ser desfeita.`
+    const confirmDelete = confirmUser(
+      `⚠️ Tem certeza que deseja desativar o perfil "${user.name || user.email}"?\n\n` +
+      `A conta será bloqueada no Firebase Auth e o histórico será preservado.`
     );
     
     if (!confirmDelete) return;
 
     try {
-      console.log('🗑️ Excluindo usuário:', user.id);
+      console.log('🗑️ Desativando perfil:', user.id);
       await deleteUser(user.id);
-      alert('✅ Usuário excluído com sucesso!');
+      notifyUser('✅ Perfil desativado com sucesso!');
     } catch (error: any) {
-      console.error('❌ Erro ao excluir usuário:', error);
-      alert(`❌ Erro ao excluir usuário: ${error.message}`);
+      console.error('❌ Erro ao desativar perfil:', error);
+      notifyUser(`❌ Erro ao desativar perfil: ${error.message}`);
     }
   };
 
@@ -179,7 +416,7 @@ export default function AdminUsersPage() {
     const newStatus = !user.isActive;
     const action = newStatus ? 'ativar' : 'desativar';
     
-    const confirmToggle = window.confirm(
+    const confirmToggle = confirmUser(
       `Tem certeza que deseja ${action} o usuário "${user.name || user.email}"?`
     );
     
@@ -190,7 +427,7 @@ export default function AdminUsersPage() {
       console.log(`✅ Status do usuário ${user.id} alterado para: ${newStatus ? 'ativo' : 'inativo'}`);
     } catch (error: any) {
       console.error('❌ Erro ao alterar status:', error);
-      alert(`❌ Erro ao alterar status: ${error.message}`);
+      notifyUser(`❌ Erro ao alterar status: ${error.message}`);
     }
   };
 
@@ -200,6 +437,8 @@ export default function AdminUsersPage() {
       let date: Date;
       
       if (typeof dateValue === 'string') {
+        date = new Date(dateValue);
+      } else if (typeof dateValue === 'number') {
         date = new Date(dateValue);
       } else if (dateValue?.toDate) {
         // Timestamp do Firebase
@@ -253,10 +492,35 @@ export default function AdminUsersPage() {
             onClick={openCreateModal}
             className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
           >
-            ➕ Novo Usuário
+            ➕ Novo Perfil
           </button>
         </div>
       </div>
+
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+        Esta tela lista perfis reais das coleções <strong>users</strong> e <strong>usuarios</strong>. Novos perfis são criados por Cloud Function segura, com Firebase Auth, custom claims e vínculo opcional ao funcionário.
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-4 rounded-lg shadow-sm border">
+          <p className="text-sm text-gray-500">Empresas carregadas</p>
+          <p className="text-2xl font-bold text-blue-700">{directoryLoading ? '...' : companies.length}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm border">
+          <p className="text-sm text-gray-500">Funcionários cadastrados</p>
+          <p className="text-2xl font-bold text-indigo-700">{directoryLoading ? '...' : employees.length}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow-sm border">
+          <p className="text-sm text-gray-500">Funcionários sem perfil</p>
+          <p className="text-2xl font-bold text-emerald-700">{directoryLoading ? '...' : employeesWithoutProfile}</p>
+        </div>
+      </div>
+
+      {directoryError && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Não foi possível carregar todo o diretório de empresas/funcionários. Você ainda pode editar perfis existentes, mas o vínculo assistido ficará limitado. Detalhe: {directoryError}
+        </div>
+      )}
 
       {/* Mensagem de Erro */}
       {error && (
@@ -280,15 +544,15 @@ export default function AdminUsersPage() {
       {/* Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-lg shadow-sm border">
-          <p className="text-sm text-gray-500">Total de Usuários</p>
+          <p className="text-sm text-gray-500">Total de Perfis</p>
           <p className="text-2xl font-bold text-gray-900">{users.length}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow-sm border">
-          <p className="text-sm text-gray-500">Usuários Ativos</p>
+          <p className="text-sm text-gray-500">Perfis Ativos</p>
           <p className="text-2xl font-bold text-green-600">{users.filter(u => u.isActive).length}</p>
         </div>
         <div className="bg-white p-4 rounded-lg shadow-sm border">
-          <p className="text-sm text-gray-500">Usuários Inativos</p>
+          <p className="text-sm text-gray-500">Perfis Inativos</p>
           <p className="text-2xl font-bold text-red-600">{users.filter(u => !u.isActive).length}</p>
         </div>
       </div>
@@ -329,7 +593,12 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredUsers.map((user) => (
+              {filteredUsers.map((user) => {
+                const employee = findEmployeeByReference(employees, user.employeeId || user.funcionarioId);
+                const companyId = user.empresaId || user.companyId || getEmployeeCompanyId(employee);
+                const company = companyById.get(companyId);
+
+                return (
                 <tr key={user.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -341,8 +610,15 @@ export default function AdminUsersPage() {
                           {user.name || 'Sem nome'}
                         </div>
                         <div className="text-sm text-gray-500">{user.email}</div>
-                        {user.employeeId && (
-                          <div className="text-xs text-gray-400">ID: {user.employeeId}</div>
+                        {(user.employeeId || employee) && (
+                          <div className="text-xs text-gray-400">
+                            Funcionário: {employee?.name || user.employeeId}
+                          </div>
+                        )}
+                        {companyId && (
+                          <div className="text-xs text-gray-400">
+                            Empresa: {getCompanyDisplayName(company, companyId)}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -356,13 +632,15 @@ export default function AdminUsersPage() {
                     </div>
                     <span className={`
                       inline-flex px-2 py-1 text-xs font-semibold rounded-full
-                      ${user.role === 'admin' 
-                        ? 'bg-purple-100 text-purple-800' 
-                        : 'bg-blue-100 text-blue-800'
-                      }
+                      ${getRoleClasses(user.role)}
                     `}>
-                      {user.role === 'admin' ? '👑 Admin' : '👤 Usuário'}
+                      {getRoleLabel(user.role)}
                     </span>
+                    {user.source && (
+                      <span className="ml-2 inline-flex px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">
+                        {user.source}
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(user.createdAt)}
@@ -401,20 +679,21 @@ export default function AdminUsersPage() {
                       onClick={() => handleDeleteUser(user)}
                       className="px-3 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded text-xs transition-colors"
                     >
-                      🗑️ Excluir
+                      🗑️ Desativar
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         ) : (
           <div className="p-6 text-center text-gray-500">
-            <p className="text-lg font-medium mb-2">👥 Nenhum usuário encontrado</p>
+            <p className="text-lg font-medium mb-2">👥 Nenhum perfil encontrado</p>
             <p className="text-sm">
               {searchTerm 
                 ? 'Tente ajustar os termos de busca.' 
-                : 'Não há usuários cadastrados no sistema.'
+                : 'Não há perfis de acesso cadastrados no sistema.'
               }
             </p>
           </div>
@@ -426,10 +705,140 @@ export default function AdminUsersPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-gray-900 mb-4">
-              {editingUser ? '✏️ Editar Usuário' : '➕ Novo Usuário'}
+              {editingUser ? '✏️ Editar Perfil' : '➕ Novo Perfil'}
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h4 className="font-semibold text-blue-950">Vínculo com cadastros reais</h4>
+                    <p className="mt-1 text-sm text-blue-800">
+                      Selecione a empresa e o funcionário já cadastrado para preencher nome, e-mail, cargo e departamento automaticamente.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={refreshDirectory}
+                    disabled={directoryLoading}
+                    className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {directoryLoading ? 'Atualizando...' : 'Atualizar cadastros'}
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-blue-950 mb-1">
+                      Empresa vinculada
+                    </label>
+                    <select
+                      value={userForm.empresaId}
+                      onChange={(e) => handleCompanyChange(e.target.value)}
+                      disabled={directoryLoading}
+                      className="w-full px-3 py-2 border border-blue-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Selecionar empresa cadastrada...</option>
+                      {userForm.empresaId && !selectedCompany && (
+                        <option value={userForm.empresaId}>ID atual: {userForm.empresaId}</option>
+                      )}
+                      {companies.map(company => (
+                        <option key={company.id} value={company.id}>
+                          {company.name} {company.cnpj ? `• ${company.cnpj}` : ''} {!company.isActive ? '• inativa' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-blue-700">
+                      Para Portaria/Kiosk, a empresa é obrigatória.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-blue-950 mb-1">
+                      Funcionário cadastrado
+                    </label>
+                    <select
+                      value={selectedEmployee?.id || userForm.employeeId}
+                      onChange={(e) => handleEmployeeSelect(e.target.value)}
+                      disabled={directoryLoading || employees.length === 0}
+                      className="w-full px-3 py-2 border border-blue-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Nenhum funcionário vinculado</option>
+                      {userForm.employeeId && !selectedEmployee && (
+                        <option value={userForm.employeeId}>Referência atual: {userForm.employeeId}</option>
+                      )}
+                      {employeesAvailableForSelectedCompany.map(employee => {
+                        const linkedProfile = employeeByProfileId.get(employee.id);
+                        const isLinkedToAnotherProfile = linkedProfile && linkedProfile.id !== editingUser?.id;
+                        const employeeCompany = companyById.get(getEmployeeCompanyId(employee));
+                        const employeeContact = getEmployeeEmail(employee) || employee.cpf || employee.registration || employee.id;
+
+                        return (
+                          <option
+                            key={employee.id}
+                            value={employee.id}
+                            disabled={isLinkedToAnotherProfile}
+                          >
+                            {employee.name} • {employeeContact} • {getCompanyDisplayName(employeeCompany, getEmployeeCompanyId(employee) || 'sem empresa')}
+                            {isLinkedToAnotherProfile ? ` • já vinculado a ${linkedProfile.name || linkedProfile.email}` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <p className="mt-1 text-xs text-blue-700">
+                      Selecionar um funcionário grava o ID real do documento em employees.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-blue-950 mb-1">
+                      Referência gravada do funcionário
+                    </label>
+                    <input
+                      type="text"
+                      value={userForm.employeeId}
+                      onChange={(e) => setUserForm(prev => ({ ...prev, employeeId: e.target.value }))}
+                      onBlur={() => {
+                        const employee = findEmployeeByReference(employees, userForm.employeeId);
+                        if (employee) {
+                          handleEmployeeSelect(employee.id);
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-blue-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="ID, matrícula, CPF ou PIS"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-blue-950 mb-1">
+                      ID gravado da empresa
+                    </label>
+                    <input
+                      type="text"
+                      value={userForm.empresaId}
+                      onChange={(e) => handleCompanyChange(e.target.value)}
+                      className="w-full px-3 py-2 border border-blue-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="ID da empresa no Firestore"
+                    />
+                  </div>
+                </div>
+
+                {selectedEmployee && (
+                  <div className="mt-4 rounded-md border border-blue-200 bg-white p-3 text-sm text-gray-700">
+                    <div className="font-semibold text-gray-900">Dados carregados do funcionário</div>
+                    <div className="mt-1 grid grid-cols-1 gap-1 sm:grid-cols-2">
+                      <span>Nome: {selectedEmployee.name}</span>
+                      <span>E-mail: {getEmployeeEmail(selectedEmployee) || 'não informado'}</span>
+                      <span>Cargo: {selectedEmployee.position || 'não informado'}</span>
+                      <span>Departamento: {selectedEmployee.department || 'não informado'}</span>
+                      <span>Empresa: {getCompanyDisplayName(companyById.get(getEmployeeCompanyId(selectedEmployee)), getEmployeeCompanyId(selectedEmployee) || userForm.empresaId)}</span>
+                      <span>Status: {selectedEmployee.status}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Email */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -477,20 +886,6 @@ export default function AdminUsersPage() {
                 />
               </div>
 
-              {/* ID do Funcionário */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Matrícula/ID
-                </label>
-                <input
-                  type="text"
-                  value={userForm.employeeId}
-                  onChange={(e) => setUserForm(prev => ({ ...prev, employeeId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="123456"
-                />
-              </div>
-
               {/* Cargo */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -526,12 +921,18 @@ export default function AdminUsersPage() {
                 </label>
                 <select
                   value={userForm.role}
-                  onChange={(e) => setUserForm(prev => ({ ...prev, role: e.target.value as 'user' | 'admin' }))}
+                  onChange={(e) => setUserForm(prev => ({ ...prev, role: e.target.value as AppUserRole }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="user">👤 Usuário</option>
-                  <option value="admin">👑 Administrador</option>
+                  {roleOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  {roleOptions.find(option => option.value === userForm.role)?.description || 'Permissões operacionais básicas.'}
+                </p>
               </div>
 
               {/* Status Ativo */}
@@ -563,7 +964,7 @@ export default function AdminUsersPage() {
               >
                 {isSaving 
                   ? '💾 Salvando...' 
-                  : editingUser ? '💾 Salvar Alterações' : '➕ Criar Usuário'
+                  : editingUser ? '💾 Salvar Alterações' : '➕ Criar Perfil'
                 }
               </button>
             </div>

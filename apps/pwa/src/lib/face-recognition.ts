@@ -7,17 +7,17 @@
 type FaceDetection = any;
 type FaceLandmarks68 = any;
 type FaceDescriptor = any;
-type WithFaceDescriptor<T> = any;
-type WithFaceLandmarks<T, U> = any;
-type WithFaceDetection<T> = any;
+type WithFaceDescriptor<_T> = any;
+type WithFaceLandmarks<_T, _U> = any;
+type WithFaceDetection<_T> = any;
 type TensorContainer = any;
 
 // Service desabilitado
 class FaceRecognitionService {
   private static instance: FaceRecognitionService;
-  
+
   private constructor() {}
-  
+
   public static getInstance(): FaceRecognitionService {
     if (!FaceRecognitionService.instance) {
       FaceRecognitionService.instance = new FaceRecognitionService();

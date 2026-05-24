@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { faceRecognition } from '@/lib/face-recognition';
+import { optimizedFaceRecognition } from '@/lib/face-recognition-optimized';
 
 // Removido estados globais duplicados, usando o serviço singleton diretamente
 
@@ -14,8 +14,13 @@ export function useFaceAPIInit() {
 
   const syncStatus = useCallback(async () => {
     try {
-      const currentStatus = await faceRecognition.getStatus();
-      setStatus(currentStatus);
+      const currentStatus = await optimizedFaceRecognition.getStatus();
+      // ✅ CORREÇÃO: Mapear status para o formato esperado
+      setStatus({
+        initialized: currentStatus.initialized || false,
+        modelsLoaded: currentStatus.initialized || false, // Assumir que se inicializado, modelos estão carregados
+        backend: currentStatus.backend || 'cpu'
+      });
       setInitializing(false);
       setError(null);
     } catch (err) {
@@ -37,7 +42,7 @@ export function useFaceAPIInit() {
     if (status.initialized) return true;
     setInitializing(true);
     try {
-      await faceRecognition.initialize();
+      await optimizedFaceRecognition.initialize();
       await syncStatus();
       return true;
     } catch (err) {
@@ -47,11 +52,23 @@ export function useFaceAPIInit() {
     }
   }, [status.initialized, syncStatus]);
 
+  // ✅ CORREÇÃO: Só inicializar TFJS em páginas que precisam - SEM DEPENDÊNCIA CIRCULAR
   useEffect(() => {
-    if (mounted && !status.initialized && !initializing) {
+    // Verificar se estamos em uma página que precisa de reconhecimento facial
+    const needsFaceAPI = typeof window !== 'undefined' && (
+      window.location.pathname.includes('/marcar') ||
+      window.location.pathname.includes('/cadastro-facial') ||
+      window.location.pathname.includes('/verificar-face') ||
+      window.location.pathname.includes('/verificacao-facial')
+    );
+    
+    // ✅ CORREÇÃO: Não carregar na página de login
+    const isLoginPage = typeof window !== 'undefined' && window.location.pathname === '/login';
+    
+    if (mounted && !status.initialized && !initializing && needsFaceAPI && !isLoginPage) {
       initializeFaceAPI();
     }
-  }, [mounted, status.initialized, initializing, initializeFaceAPI]);
+  }, [mounted, status.initialized, initializing]); // ✅ REMOVIDO: initializeFaceAPI das dependências
 
   const retry = useCallback(() => {
     setError(null);
@@ -75,8 +92,8 @@ export function useFaceAPIInit() {
 
 // Funções utilitárias atualizadas
 export async function isFaceAPIReady(): Promise<boolean> {
-  const status = await faceRecognition.getStatus();
-  return status.initialized && status.modelsLoaded;
+  const status = await optimizedFaceRecognition.getStatus();
+  return status.initialized || false;
 }
 
 export async function waitForFaceAPI(): Promise<void> {
