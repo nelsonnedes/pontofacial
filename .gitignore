@@ -1,81 +1,85 @@
-# Dependências
+# Dependencies
 node_modules/
-.pnpm-store/
-.npm/
+.pnp
+.pnp.js
 
-# Arquivos de build
-.next/
-out/
-build/
-dist/
-coverage/
+# Production builds
+/build
+/out
+/.next
+/dist
 
-# Arquivos de ambiente
+# Environment variables
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 .env*.local
+.env.production
+functions/.env.*
+!functions/.env.example
+serviceAccountKey.json
+**/serviceAccountKey.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Logs
-logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
-# Arquivos do sistema
-.DS_Store
-Thumbs.db
-desktop.ini
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
 
-# Arquivos de IDE/editores
-.idea/
-.vscode/
-*.sublime-project
-*.sublime-workspace
-.project
-.classpath
-*.swp
-*.swo
-
-# Arquivos de cache
-.cache/
-.eslintcache
-.stylelintcache
-*.tsbuildinfo
-
-# Arquivos temporários
-tmp/
-temp/
-.temp/
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
 
 # Firebase
 .firebase/
-firebase-debug.log
-firestore-debug.log
-ui-debug.log
+*-debug.log
+*-error.log
+firebase-debug.log*
 
-# Arquivos específicos do projeto
-apps/pwa/html/
-apps/pwa/out/
-apps/pwa/.next/
-apps/pwa/public/models/
+# Temporary files
+.tmp/
+temp/
 
-# Arquivos de documentação interna
-ANALISE_DESENVOLVIMENTO.md
-ANALISE_TAILWIND_E_SISTEMA_FUNCIONARIOS.md
-CORREÇÕES_CAMERA_FACIAL.md
-CORREÇÕES_IMPLEMENTADAS_DIRETORIO.md
-CORREÇÕES_SEGURANÇA_AUTENTICAÇÃO.md
-PROBLEMAS_CRITICOS_IDENTIFICADOS.md
-RESUMO_EXECUTIVO_ATUALIZADO.md
-"Prompt Mestre (ver.md"
-"logs do console completos.txt"
-
-# Lock files
-pnpm-lock.yaml
+# ✅ IMPORTANT: Prevent multiple package manager lock files
+# Only allow pnpm-lock.yaml since this project uses pnpm
 package-lock.json
 yarn.lock
+
+# Local workspace settings
+.vscode/settings.json
+
+# Test outputs
+coverage/
+.nyc_output
+
+# Storybook
+storybook-static
+
+# Service Worker files
+public/sw.js*
+public/workbox-*
+
+# Face Recognition Models (downloaded via script)
+public/models/*.json
+public/models/*.bin
+public/face_recognition_model*
+
+# PWA Build artifacts
+/apps/pwa/out/
+/apps/pwa/.next/

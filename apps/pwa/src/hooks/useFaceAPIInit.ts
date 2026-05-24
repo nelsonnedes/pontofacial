@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { faceRecognition } from '@/lib/face-recognition';
+import { optimizedFaceRecognition } from '@/lib/face-recognition-optimized';
 
 // Removido estados globais duplicados, usando o serviço singleton diretamente
 
@@ -11,136 +11,70 @@ export function useFaceAPIInit() {
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Referência para controlar tentativas de inicialização
-  const initAttemptsRef = useRef(0);
-  const lastInitTimeRef = useRef(0);
-  const MAX_INIT_ATTEMPTS = 3;
-  const INIT_COOLDOWN_MS = 10000; // 10 segundos entre tentativas após falhas
 
-  // Sincronizar status de forma mais eficiente
   const syncStatus = useCallback(async () => {
     try {
-      // Evitar sincronização se já estiver inicializando
-      if (initializing) return;
-      
-      const currentStatus = await faceRecognition.getStatus();
-      
-      // Atualizar status apenas se houver mudança
-      setStatus(prevStatus => {
-        if (prevStatus.initialized !== currentStatus.initialized || 
-            prevStatus.modelsLoaded !== currentStatus.modelsLoaded || 
-            prevStatus.backend !== currentStatus.backend) {
-          return currentStatus;
-        }
-        return prevStatus;
+      const currentStatus = await optimizedFaceRecognition.getStatus();
+      // ✅ CORREÇÃO: Mapear status para o formato esperado
+      setStatus({
+        initialized: currentStatus.initialized || false,
+        modelsLoaded: currentStatus.initialized || false, // Assumir que se inicializado, modelos estão carregados
+        backend: currentStatus.backend || 'cpu'
       });
-      
-      // Limpar erro se estiver inicializado com sucesso
-      if (currentStatus.initialized && currentStatus.modelsLoaded && error) {
-        setError(null);
-      }
+      setInitializing(false);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao sincronizar status');
       setInitializing(false);
     }
-  }, [initializing, error]);
+  }, []);
 
-  // Efeito de montagem com intervalo de sincronização mais longo
   useEffect(() => {
     setMounted(true);
     syncStatus();
-    
-    // Usar intervalo mais longo (3s) para reduzir sobrecarga
-    intervalRef.current = setInterval(syncStatus, 3000);
-    
+    intervalRef.current = setInterval(syncStatus, 1000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [syncStatus]);
 
-  // Função de inicialização com controle de tentativas
   const initializeFaceAPI = useCallback(async (): Promise<boolean> => {
-    // Verificar se já está inicializado
-    if (status.initialized && status.modelsLoaded) return true;
-    
-    // Evitar múltiplas tentativas simultâneas
-    if (initializing) return false;
-    
-    // Controle de tentativas para evitar loops
-    const now = Date.now();
-    if (initAttemptsRef.current >= MAX_INIT_ATTEMPTS) {
-      const timeSinceLastAttempt = now - lastInitTimeRef.current;
-      if (timeSinceLastAttempt < INIT_COOLDOWN_MS) {
-        setError(`Muitas tentativas de inicialização. Aguarde ${Math.ceil(INIT_COOLDOWN_MS/1000)}s antes de tentar novamente.`);
-        return false;
-      }
-      // Resetar contador após cooldown
-      initAttemptsRef.current = 0;
-    }
-    
+    if (status.initialized) return true;
     setInitializing(true);
-    lastInitTimeRef.current = now;
-    initAttemptsRef.current++;
-    
     try {
-      await faceRecognition.initialize();
+      await optimizedFaceRecognition.initialize();
       await syncStatus();
-      // Resetar contador após sucesso
-      initAttemptsRef.current = 0;
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro na inicialização');
       setInitializing(false);
       return false;
     }
-  }, [status.initialized, status.modelsLoaded, initializing, syncStatus]);
+  }, [status.initialized, syncStatus]);
 
-  // Efeito para inicialização automática (com controle para evitar loops)
+  // ✅ CORREÇÃO: Só inicializar TFJS em páginas que precisam - SEM DEPENDÊNCIA CIRCULAR
   useEffect(() => {
-    // Função para inicializar com logging
-    const attemptInitialization = async () => {
-      console.log('🔄 Tentando inicializar Face API automaticamente...');
-      try {
-        const result = await initializeFaceAPI();
-        if (result) {
-          console.log('✅ Inicialização automática do Face API bem-sucedida');
-        } else {
-          console.warn('⚠️ Inicialização automática do Face API falhou');
-        }
-      } catch (err) {
-        console.error('❌ Erro na inicialização automática do Face API:', err);
-      }
-    };
+    // Verificar se estamos em uma página que precisa de reconhecimento facial
+    const needsFaceAPI = typeof window !== 'undefined' && (
+      window.location.pathname.includes('/marcar') ||
+      window.location.pathname.includes('/cadastro-facial') ||
+      window.location.pathname.includes('/verificar-face') ||
+      window.location.pathname.includes('/verificacao-facial')
+    );
     
-    // Verificar se devemos tentar inicialização automática
-    if (mounted && !status.initialized && !initializing && initAttemptsRef.current < MAX_INIT_ATTEMPTS) {
-      const now = Date.now();
-      const timeSinceLastAttempt = now - lastInitTimeRef.current;
-      
-      // Adicionar delay entre tentativas automáticas
-      if (timeSinceLastAttempt > INIT_COOLDOWN_MS || initAttemptsRef.current === 0) {
-        console.log(`🔄 Agendando inicialização automática (tentativa ${initAttemptsRef.current + 1}/${MAX_INIT_ATTEMPTS})...`);
-        
-        // Usar setTimeout para evitar bloqueio de renderização
-        const timer = setTimeout(() => {
-          attemptInitialization();
-        }, 500);
-        
-        return () => clearTimeout(timer);
-      }
+    // ✅ CORREÇÃO: Não carregar na página de login
+    const isLoginPage = typeof window !== 'undefined' && window.location.pathname === '/login';
+    
+    if (mounted && !status.initialized && !initializing && needsFaceAPI && !isLoginPage) {
+      initializeFaceAPI();
     }
-  }, [mounted, status.initialized, initializing, initializeFaceAPI]);
+  }, [mounted, status.initialized, initializing]); // ✅ REMOVIDO: initializeFaceAPI das dependências
 
-  // Função de retry com reset de erro
   const retry = useCallback(() => {
     setError(null);
-    // Resetar contador de tentativas ao fazer retry manual
-    initAttemptsRef.current = 0;
     return initializeFaceAPI();
   }, [initializeFaceAPI]);
 
-  // Verificar se está pronto para uso
   const isReady = useCallback(() => {
     return mounted && status.initialized && status.modelsLoaded && !initializing && !error;
   }, [mounted, status, initializing, error]);
@@ -158,8 +92,8 @@ export function useFaceAPIInit() {
 
 // Funções utilitárias atualizadas
 export async function isFaceAPIReady(): Promise<boolean> {
-  const status = await faceRecognition.getStatus();
-  return status.initialized && status.modelsLoaded;
+  const status = await optimizedFaceRecognition.getStatus();
+  return status.initialized || false;
 }
 
 export async function waitForFaceAPI(): Promise<void> {

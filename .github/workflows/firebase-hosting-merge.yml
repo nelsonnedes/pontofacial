@@ -1,43 +1,67 @@
-name: Hospedagem Firebase + Next.js (webframeworks) — live
+name: Firebase production release
 
 on:
   push:
     branches: [main]
 
 jobs:
-  build_and_deploy:
+  build_test_deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
+
+    env:
+      PONTO_FACIAL_RELEASE_PROFILE: production
+      NEXT_PUBLIC_PONTO_FACIAL_RELEASE_PROFILE: production
+      ENFORCE_APP_CHECK: "true"
+      NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY }}
+      NEXT_PUBLIC_BIOMETRIC_ENGINE: server
+      NEXT_PUBLIC_BIOMETRIC_LIVENESS_REQUIRED: "true"
+      NEXT_PUBLIC_ALLOW_BIOMETRIC_DEMO: "false"
+      NEXT_PUBLIC_ALLOW_MANUAL_LIVENESS: "false"
+      NEXT_PUBLIC_ALLOW_LEGACY_CLIENT_BIOMETRICS: "false"
+      NEXT_PUBLIC_REQUIRED_APP_TERMS_VERSION: ${{ vars.NEXT_PUBLIC_REQUIRED_APP_TERMS_VERSION || '2026-05-24-app-terms-v1' }}
+      NEXT_PUBLIC_REQUIRED_PRIVACY_NOTICE_VERSION: ${{ vars.NEXT_PUBLIC_REQUIRED_PRIVACY_NOTICE_VERSION || '2026-05-24-privacy-notice-v1' }}
+      NEXT_PUBLIC_REQUIRED_BIOMETRIC_NOTICE_VERSION: ${{ vars.NEXT_PUBLIC_REQUIRED_BIOMETRIC_NOTICE_VERSION || '2026-05-24-biometric-notice-v1' }}
+      NEXT_PUBLIC_REQUIRED_LEGAL_CONTENT_HASH: ${{ vars.NEXT_PUBLIC_REQUIRED_LEGAL_CONTENT_HASH || '2026-05-24-legal-baseline' }}
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            apps/pwa/package-lock.json
+          node-version: 22
+          cache: pnpm
 
-      - name: Print layout (debug)
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm --filter pwa test
+
+      - name: Firestore rules tests
+        run: pnpm test:rules
+
+      - name: Build all
+        run: pnpm build:all
+
+      - name: Deploy Firestore, Storage and Functions
         run: |
-          pwd
-          ls -la
-          echo "--- apps/pwa ---"
-          ls -la apps/pwa || true
-          echo "--- firebase.json ---"
-          cat firebase.json
+          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_DBPONTO_FACIAL }}' > "$HOME/firebase-sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/firebase-sa.json"
+          pnpm dlx firebase-tools deploy --only firestore:rules,storage:rules,functions --project dbponto-facial --non-interactive
 
-      - name: Install deps (apps/pwa)
-        run: npm --prefix apps/pwa ci || npm --prefix apps/pwa install
-
-      - name: Build (apps/pwa)
-        run: npm --prefix apps/pwa run build
-
-      - name: Deploy to Firebase Hosting (live)
+      - name: Deploy Hosting live
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
