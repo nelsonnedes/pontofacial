@@ -584,10 +584,17 @@
   z-index: 40; /* ✅ Z-index adequado (menor que sidebar) */
   padding: 0 1rem;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   /* ✅ Safe area para dispositivos com notch */
   padding-top: env(safe-area-inset-top);
   height: calc(64px + env(safe-area-inset-top));
+}
+
+.mobile-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
 }
 
 @media (max-width: 768px) {
@@ -850,8 +857,6 @@
   /* Links mais touch-friendly */
   a {
     min-height: 44px;
-    display: inline-flex;
-    align-items: center;
     touch-action: manipulation;
   }
 }

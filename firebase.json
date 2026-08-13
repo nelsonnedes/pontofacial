@@ -152,5 +152,13 @@
       "pnpm --filter functions lint",
       "pnpm --filter functions build"
     ]
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8089
+    },
+    "ui": {
+      "enabled": false
+    }
   }
 }

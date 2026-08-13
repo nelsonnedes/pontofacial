@@ -110,60 +110,58 @@ export default function SelectTypeScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">
-            Marcar Ponto
-          </h1>
-          <p className="text-lg text-gray-600">
-            Selecione o tipo de marcação que deseja realizar
-          </p>
-          
-          {/* User info */}
-          {user && (
-            <div className="mt-4 inline-flex items-center px-4 py-2 bg-white rounded-full shadow-md">
-              <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-              <span className="text-sm text-gray-700">
-                Logado como <strong>{user.displayName || user.email}</strong>
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Type Selection Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {typeOptions.map((option) => (
-            <TypeCard
-              key={option.type}
-              option={option}
-              onSelect={handleTypeSelect}
-            />
-          ))}
-        </div>
-
-        {/* Footer */}
-        <div className="text-center space-y-4">
-          <div className="text-sm text-gray-500">
-            Sistema de Ponto Facial - Reconhecimento automático multi-usuário
+    <div className="bg-white rounded-3xl shadow-xl p-6 sm:p-8 lg:p-10 border border-gray-100 w-full max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="text-center mb-8">
+        <h1 className="text-4xl font-bold text-gray-900 mb-3">
+          Marcar Ponto
+        </h1>
+        <p className="text-lg text-gray-600">
+          Selecione o tipo de marcação que deseja realizar
+        </p>
+        
+        {/* User info */}
+        {user && (
+          <div className="mt-4 inline-flex items-center px-4 py-2 bg-gray-50/80 rounded-full border border-gray-100 shadow-sm">
+            <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+            <span className="text-sm text-gray-700">
+              Logado como <strong>{user.displayName || user.email}</strong>
+            </span>
           </div>
+        )}
+      </div>
+
+      {/* Type Selection Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {typeOptions.map((option) => (
+          <TypeCard
+            key={option.type}
+            option={option}
+            onSelect={handleTypeSelect}
+          />
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div className="text-center space-y-4">
+        <div className="text-sm text-gray-500">
+          Sistema de Ponto Facial - Reconhecimento automático multi-usuário
+        </div>
+        
+        <div className="flex justify-center space-x-4">
+          <Link
+            href="/app"
+            className="px-6 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+          >
+            ← Voltar ao Menu
+          </Link>
           
-          <div className="flex justify-center space-x-4">
-            <Link
-              href="/app"
-              className="px-6 py-2 text-gray-600 hover:text-gray-800 transition-colors"
-            >
-              ← Voltar ao Menu
-            </Link>
-            
-            <Link
-              href="/app/historico"
-              className="px-6 py-2 text-blue-600 hover:text-blue-800 transition-colors"
-            >
-              Ver Histórico
-            </Link>
-          </div>
+          <Link
+            href="/app/historico"
+            className="px-6 py-2 text-blue-600 hover:text-blue-800 transition-colors"
+          >
+            Ver Histórico
+          </Link>
         </div>
       </div>
     </div>

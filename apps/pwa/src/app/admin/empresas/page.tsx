@@ -265,80 +265,82 @@ export default function AdminEmpresasPage() {
       </div>
 
       {/* Conteúdo Principal */}
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {stats.error && (
-          <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-            {stats.error}
-          </div>
-        )}
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <main className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] mt-6">
+          {stats.error && (
+            <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+              {stats.error}
+            </div>
+          )}
 
-        {/* Estatísticas rápidas */}
-        <div className="mb-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-blue-600 mr-4">🏢</div>
-              <div>
-                <p className="text-sm text-gray-500">Empresas cadastradas</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {statsLoading ? '...' : stats.totalCompanies}
-                </p>
-                <p className="text-xs text-gray-400">
-                  {statsLoading ? 'Carregando' : `${stats.activeCompanies} ativa(s)`}
-                </p>
+          {/* Estatísticas rápidas */}
+          <div className="mb-8 grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-blue-600 mr-4">🏢</div>
+                <div>
+                  <p className="text-sm text-gray-500">Empresas cadastradas</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {statsLoading ? '...' : stats.totalCompanies}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {statsLoading ? 'Carregando' : `${stats.activeCompanies} ativa(s)`}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-green-600 mr-4">📍</div>
+                <div>
+                  <p className="text-sm text-gray-500">Com GPS válido</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {statsLoading ? '...' : stats.companiesWithGps}
+                  </p>
+                  <p className="text-xs text-gray-400">Coordenadas reais</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-yellow-600 mr-4">👥</div>
+                <div>
+                  <p className="text-sm text-gray-500">Funcionários ativos</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {statsLoading ? '...' : stats.totalEmployees}
+                  </p>
+                  <p className="text-xs text-gray-400">Cadastros ativos</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-purple-600 mr-4">⏰</div>
+                <div>
+                  <p className="text-sm text-gray-500">Registros hoje</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {statsLoading ? '...' : stats.todayRecords}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={loadCompanyStats}
+                    disabled={statsLoading}
+                    className="mt-1 text-xs text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                  >
+                    {statsLoading ? 'Atualizando' : 'Atualizar dados'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-green-600 mr-4">📍</div>
-              <div>
-                <p className="text-sm text-gray-500">Com GPS válido</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {statsLoading ? '...' : stats.companiesWithGps}
-                </p>
-                <p className="text-xs text-gray-400">Coordenadas reais</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-yellow-600 mr-4">👥</div>
-              <div>
-                <p className="text-sm text-gray-500">Funcionários ativos</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {statsLoading ? '...' : stats.totalEmployees}
-                </p>
-                <p className="text-xs text-gray-400">Cadastros ativos</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-purple-600 mr-4">⏰</div>
-              <div>
-                <p className="text-sm text-gray-500">Registros hoje</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {statsLoading ? '...' : stats.todayRecords}
-                </p>
-                <button
-                  type="button"
-                  onClick={loadCompanyStats}
-                  disabled={statsLoading}
-                  className="mt-1 text-xs text-blue-600 hover:text-blue-700 disabled:text-gray-400"
-                >
-                  {statsLoading ? 'Atualizando' : 'Atualizar dados'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Componente de Gerenciamento */}
-        <CompanyRegistrationForm />
-      </main>
+          {/* Componente de Gerenciamento */}
+          <CompanyRegistrationForm />
+        </main>
+      </div>
 
       {/* Footer */}
       <footer className="bg-white border-t mt-12">

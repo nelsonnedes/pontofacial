@@ -692,190 +692,187 @@ export default function ComprovantesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/app')}
-                className="flex items-center justify-center w-10 h-10 text-gray-600 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
-              >
-                <span className="text-lg">←</span>
-              </button>
+    <div className="bg-white rounded-3xl shadow-lg p-6 sm:p-8 lg:p-10 border border-gray-100 w-full max-w-6xl mx-auto shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+      {/* Header */}
+      <div className="border-b border-gray-150 pb-6 mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/app')}
+              className="flex items-center justify-center w-10 h-10 text-gray-600 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+            >
+              <span className="text-lg">←</span>
+            </button>
+            <div>
               <h1 className="text-2xl font-bold text-gray-900">Meus Comprovantes</h1>
-            </div>
-            
-            <div className="flex gap-2">
-              <button 
-                onClick={exportToCSV}
-                disabled={filteredMarcacoes.length === 0}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
-              >
-                📥 Exportar CSV
-              </button>
-              <button 
-                onClick={loadMarcacoes}
-                disabled={isLoadingData}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-              >
-                {isLoadingData ? '🔄 Carregando...' : '🔄 Atualizar'}
-              </button>
+              <p className="text-gray-600 text-sm mt-1">Histórico de marcações de ponto</p>
             </div>
           </div>
           
-          <p className="text-gray-600 text-sm">
-            Histórico de marcações de ponto
-          </p>
-        </div>
-
-        {/* Filtros */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            {/* Filtro por período */}
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Período
-              </label>
-              <select 
-                value={filterPeriod}
-                onChange={(e) => setFilterPeriod(e.target.value as FilterPeriod)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="today">Hoje</option>
-                <option value="week">Última semana</option>
-                <option value="month">Último mês</option>
-                <option value="all">Todos</option>
-              </select>
-            </div>
-            
-            {/* Busca */}
-            <div className="flex-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Buscar
-              </label>
-              <input 
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por estabelecimento, origem ou data..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={exportToCSV}
+              disabled={filteredMarcacoes.length === 0}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
+            >
+              📥 Exportar CSV
+            </button>
+            <button 
+              onClick={loadMarcacoes}
+              disabled={isLoadingData}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+            >
+              {isLoadingData ? '🔄 Carregando...' : '🔄 Atualizar'}
+            </button>
           </div>
-        </div>
-
-        {/* Estatísticas */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-xl shadow-lg p-4">
-            <div className="text-2xl font-bold text-blue-600">{marcacoes.length}</div>
-            <div className="text-sm text-gray-600">Total de marcações</div>
-          </div>
-          
-          <div className="bg-white rounded-xl shadow-lg p-4">
-            <div className="text-2xl font-bold text-green-600">{filteredMarcacoes.length}</div>
-            <div className="text-sm text-gray-600">Marcações filtradas</div>
-          </div>
-          
-          <div className="bg-white rounded-xl shadow-lg p-4">
-            <div className="text-2xl font-bold text-purple-600">
-              {filteredMarcacoes.filter(m => m.createdAt.toDate() >= new Date(new Date().setHours(0,0,0,0))).length}
-            </div>
-            <div className="text-sm text-gray-600">Marcações hoje</div>
-          </div>
-        </div>
-
-        {/* Lista de marcações */}
-        <div className="bg-white rounded-2xl shadow-xl p-6">
-          {error && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-lg">
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
-          
-          {isLoadingData ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Carregando marcações...</p>
-            </div>
-          ) : filteredMarcacoes.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <div className="text-4xl mb-4">📋</div>
-              <p className="text-lg font-medium">Nenhuma marcação encontrada</p>
-              <p className="text-sm mt-2">
-                {marcacoes.length === 0 
-                  ? 'Você ainda não fez nenhuma marcação de ponto'
-                  : 'Tente ajustar os filtros para encontrar suas marcações'
-                }
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredMarcacoes.map((marcacao) => (
-                <div key={marcacao.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold text-gray-900">
-                          📍 {marcacao.employeeName || marcacao.usuarioId}
-                        </h3>
-                        {getOrigemBadge(marcacao.origem)}
-                        {getLivenessStatus(marcacao.livenessResults)}
-                      </div>
-                      
-                      <div className="text-sm text-gray-600 space-y-1">
-                        {marcacao.employeeEmail && (
-                          <p>✉️ <strong>E-mail:</strong> {marcacao.employeeEmail}</p>
-                        )}
-                        <p>🏷️ <strong>Tipo:</strong> {marcacao.type || 'Registro'}</p>
-                        <p>🕐 <strong>Data/Hora:</strong> {formatDateTime(marcacao.createdAt)}</p>
-                        <p>🏢 <strong>Empresa/Local:</strong> {marcacao.companyName || marcacao.estabId}</p>
-                        <p>🌍 <strong>GPS:</strong> {formatGPS(marcacao.gps)}</p>
-                        {marcacao.gps?.address && (
-                          <p>📍 <strong>Endereço:</strong> {marcacao.gps.address}</p>
-                        )}
-                        <p>📸 <strong>Evidência:</strong> {marcacao.hasPhotoEvidence || marcacao.fotoPath || marcacao.photoHash ? 'Registrada' : 'Não disponível'}</p>
-                        <p>✅ <strong>Validação facial:</strong> {marcacao.hasFacialRecognition ? 'Confirmada' : 'Não confirmada'}</p>
-                        {typeof marcacao.faceMatch?.similarity === 'number' && (
-                          <p>🧬 <strong>Similaridade:</strong> {Math.round(marcacao.faceMatch.similarity * 100)}%</p>
-                        )}
-                        {marcacao.nsr && (
-                          <p>🔢 <strong>NSR:</strong> {marcacao.nsr}</p>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col gap-2">
-                      <span className="inline-block px-3 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
-                        {getOperationalStatus(marcacao).label}
-                      </span>
-                      
-                      <button 
-                        onClick={() => generateComprovante(marcacao)}
-                        className="px-3 py-1 text-xs bg-blue-100 text-blue-800 rounded-full hover:bg-blue-200 transition-colors"
-                      >
-                        📄 Prévia PDF
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Informações adicionais */}
-        <div className="bg-blue-50 rounded-xl p-4 border border-blue-200 mt-6">
-          <h3 className="font-medium text-blue-900 mb-2">ℹ️ Sobre os comprovantes</h3>
-          <ul className="text-sm text-blue-800 space-y-1">
-            <li>• As prévias usam os registros encontrados para conferência operacional</li>
-            <li>• O PDF gerado nesta tela é uma prévia operacional para conferência interna</li>
-            <li>• Timestamp, localização e evidência são exibidos quando existem no registro</li>
-            <li>• Comprovantes assinados devem ser emitidos por rotina backend auditável</li>
-          </ul>
         </div>
       </div>
-    </main>
+
+      {/* Filtros */}
+      <div className="bg-gray-50/50 rounded-2xl border border-gray-100/50 p-6 mb-6">
+        <div className="flex flex-col sm:flex-row gap-4">
+          {/* Filtro por período */}
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Período
+            </label>
+            <select 
+              value={filterPeriod}
+              onChange={(e) => setFilterPeriod(e.target.value as FilterPeriod)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="today">Hoje</option>
+              <option value="week">Última semana</option>
+              <option value="month">Último mês</option>
+              <option value="all">Todos</option>
+            </select>
+          </div>
+          
+          {/* Busca */}
+          <div className="flex-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Buscar
+            </label>
+            <input 
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por estabelecimento, origem ou data..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Estatísticas */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-4">
+          <div className="text-2xl font-bold text-blue-600">{marcacoes.length}</div>
+          <div className="text-sm text-gray-600">Total de marcações</div>
+        </div>
+        
+        <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-4">
+          <div className="text-2xl font-bold text-green-600">{filteredMarcacoes.length}</div>
+          <div className="text-sm text-gray-600">Marcações filtradas</div>
+        </div>
+        
+        <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-4">
+          <div className="text-2xl font-bold text-purple-600">
+            {filteredMarcacoes.filter(m => m.createdAt.toDate() >= new Date(new Date().setHours(0,0,0,0))).length}
+          </div>
+          <div className="text-sm text-gray-600">Marcações hoje</div>
+        </div>
+      </div>
+
+      {/* Lista de marcações */}
+      <div className="bg-white border border-gray-200/80 rounded-2xl p-6">
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-lg">
+            <p className="text-sm text-red-800">{error}</p>
+          </div>
+        )}
+        
+        {isLoadingData ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Carregando marcações...</p>
+          </div>
+        ) : filteredMarcacoes.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <div className="text-4xl mb-4">📋</div>
+            <p className="text-lg font-medium">Nenhuma marcação encontrada</p>
+            <p className="text-sm mt-2">
+              {marcacoes.length === 0 
+                ? 'Você ainda não fez nenhuma marcação de ponto'
+                : 'Tente ajustar os filtros para encontrar suas marcações'
+              }
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredMarcacoes.map((marcacao) => (
+              <div key={marcacao.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h3 className="font-semibold text-gray-900">
+                        📍 {marcacao.employeeName || marcacao.usuarioId}
+                      </h3>
+                      {getOrigemBadge(marcacao.origem)}
+                      {getLivenessStatus(marcacao.livenessResults)}
+                    </div>
+                    
+                    <div className="text-sm text-gray-600 space-y-1">
+                      {marcacao.employeeEmail && (
+                        <p>✉️ <strong>E-mail:</strong> {marcacao.employeeEmail}</p>
+                      )}
+                      <p>🏷️ <strong>Tipo:</strong> {marcacao.type || 'Registro'}</p>
+                      <p>🕐 <strong>Data/Hora:</strong> {formatDateTime(marcacao.createdAt)}</p>
+                      <p>🏢 <strong>Empresa/Local:</strong> {marcacao.companyName || marcacao.estabId}</p>
+                      <p>🌍 <strong>GPS:</strong> {formatGPS(marcacao.gps)}</p>
+                      {marcacao.gps?.address && (
+                        <p>📍 <strong>Endereço:</strong> {marcacao.gps.address}</p>
+                      )}
+                      <p>📸 <strong>Evidência:</strong> {marcacao.hasPhotoEvidence || marcacao.fotoPath || marcacao.photoHash ? 'Registrada' : 'Não disponível'}</p>
+                      <p>✅ <strong>Validação facial:</strong> {marcacao.hasFacialRecognition ? 'Confirmada' : 'Não confirmada'}</p>
+                      {typeof marcacao.faceMatch?.similarity === 'number' && (
+                        <p>🧬 <strong>Similaridade:</strong> {Math.round(marcacao.faceMatch.similarity * 100)}%</p>
+                      )}
+                      {marcacao.nsr && (
+                        <p>🔢 <strong>NSR:</strong> {marcacao.nsr}</p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col gap-2">
+                    <span className="inline-block px-3 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                      {getOperationalStatus(marcacao).label}
+                    </span>
+                    
+                    <button 
+                      onClick={() => generateComprovante(marcacao)}
+                      className="px-3 py-1 text-xs bg-blue-100 text-blue-800 rounded-full hover:bg-blue-200 transition-colors"
+                    >
+                      📄 Prévia PDF
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Informações adicionais */}
+      <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-200/50 mt-6">
+        <h3 className="font-medium text-blue-900 mb-2">ℹ️ Sobre os comprovantes</h3>
+        <ul className="text-sm text-blue-800 space-y-1">
+          <li>• As prévias usam os registros encontrados para conferência operacional</li>
+          <li>• O PDF gerado nesta tela é uma prévia operacional para conferência interna</li>
+          <li>• Timestamp, localização e evidência são exibidos quando existem no registro</li>
+          <li>• Comprovantes assinados devem ser emitidos por rotina backend auditável</li>
+        </ul>
+      </div>
+    </div>
   );
 }

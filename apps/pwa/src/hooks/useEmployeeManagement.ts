@@ -122,6 +122,35 @@ const INITIAL_FORM_DATA: EmployeeFormData = {
   observacoes: ''
 };
 
+const EMPLOYEE_FORM_FIELDS = Object.keys(INITIAL_FORM_DATA) as Array<keyof EmployeeFormData>;
+const employeeDebugEnabled =
+  process.env.NODE_ENV === 'development' &&
+  process.env.NEXT_PUBLIC_VERBOSE_EMPLOYEE_LOGS === 'true';
+
+function logEmployeeDebug(...args: unknown[]): void {
+  if (employeeDebugEnabled) {
+    console.debug('[employee-management]', ...args);
+  }
+}
+
+function normalizeEmployeeFormData(
+  source: Partial<Record<keyof EmployeeFormData, unknown>> = {}
+): EmployeeFormData {
+  const normalized: EmployeeFormData = { ...INITIAL_FORM_DATA };
+
+  for (const field of EMPLOYEE_FORM_FIELDS) {
+    const value = source[field];
+
+    if (typeof value === 'string') {
+      (normalized as Record<keyof EmployeeFormData, string>)[field] = value;
+    } else if (typeof value === 'number') {
+      (normalized as Record<keyof EmployeeFormData, string>)[field] = String(value);
+    }
+  }
+
+  return normalized;
+}
+
 export interface EmployeeManagementResult {
   success: boolean;
   message: string;
@@ -159,7 +188,7 @@ export function useEmployeeManagement() {
   const loadEmployeeData = useCallback(async (empId: string): Promise<boolean> => {
     try {
       setIsLoading(true);
-      console.log('🔄 Carregando dados do funcionário para edição:', empId);
+      logEmployeeDebug('Carregando dados do funcionário para edição:', empId);
       
       const employeeDoc = await getDoc(doc(db, 'employees', empId));
       
@@ -168,8 +197,10 @@ export function useEmployeeManagement() {
         return false;
       }
       
-      const data = employeeDoc.data() as EmployeeFormData;
-      console.log('✅ Dados carregados para edição:', data.nomeCompleto);
+      const data = normalizeEmployeeFormData(
+        employeeDoc.data() as Partial<Record<keyof EmployeeFormData, unknown>>
+      );
+      logEmployeeDebug('Dados carregados para edição:', data.nomeCompleto);
       
       setFormData(data);
       return true;
@@ -294,14 +325,16 @@ export function useEmployeeManagement() {
       }
 
       // Preparar dados para salvamento
+      const normalizedFormData = normalizeEmployeeFormData(formData);
+      const now = new Date();
       const employeeData = {
-        ...formData,
-        status: 'active',
-        updatedAt: new Date(),
+        ...normalizedFormData,
+        updatedAt: now,
         ...(mode === 'create'
           ? {
+              status: 'active',
               createdBy: user?.uid || 'system',
-              createdAt: new Date(),
+              createdAt: now,
               registrationCompleted: false,
               faceEmbedding: null,
               facialRegistrationDate: null
@@ -313,15 +346,19 @@ export function useEmployeeManagement() {
 
       if (mode === 'create') {
         // Criar novo funcionário
-        console.log('💾 Salvando novo funcionário:', formData.nomeCompleto);
+        logEmployeeDebug('Salvando novo funcionário:', normalizedFormData.nomeCompleto);
         const docRef = await addDoc(collection(db, 'employees'), employeeData);
         savedEmployeeId = docRef.id;
-        console.log('✅ Funcionário criado com ID:', savedEmployeeId);
+        logEmployeeDebug('Funcionário criado com ID:', savedEmployeeId);
       } else {
+        if (!employeeId) {
+          throw new Error('Identificador do funcionário não informado para edição.');
+        }
+
         // Atualizar funcionário existente
-        console.log('🔄 Atualizando funcionário:', employeeId);
+        logEmployeeDebug('Atualizando funcionário:', employeeId);
         await updateDoc(doc(db, 'employees', employeeId), employeeData);
-        console.log('✅ Funcionário atualizado');
+        logEmployeeDebug('Funcionário atualizado');
       }
 
       return {

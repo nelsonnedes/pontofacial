@@ -103,37 +103,36 @@ export default function FilaPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6">
-      <div className="max-w-4xl mx-auto px-4">
-        {/* Header */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/app')}
-                className="flex items-center justify-center w-10 h-10 text-gray-600 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
-              >
-                <span className="text-lg">←</span>
-              </button>
-              <h1 className="text-2xl font-bold text-gray-900">Fila de Sincronização</h1>
-            </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={loadPendencias}
-                className="px-3 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200"
-              >
-                🔄 Atualizar
-              </button>
-            </div>
+    <div className="bg-white rounded-3xl shadow-lg p-6 sm:p-8 lg:p-10 border border-gray-100 w-full max-w-4xl mx-auto shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+      {/* Header */}
+      <div className="border-b border-gray-150 pb-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/app')}
+              className="flex items-center justify-center w-10 h-10 text-gray-600 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+            >
+              <span className="text-lg">←</span>
+            </button>
+            <h1 className="text-2xl font-bold text-gray-900">Fila de Sincronização</h1>
           </div>
-          
-          <p className="text-gray-600 text-sm">
-            Marcações pendentes de sincronização com o servidor
-          </p>
+          <div className="flex gap-2">
+            <button 
+              onClick={loadPendencias}
+              className="px-3 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200"
+            >
+              🔄 Atualizar
+            </button>
+          </div>
         </div>
+        
+        <p className="text-gray-600 text-sm">
+          Marcações pendentes de sincronização com o servidor
+        </p>
+      </div>
 
-        {/* Content */}
-        <div className="bg-white rounded-2xl shadow-xl p-6">
+      {/* Content */}
+      <div className="bg-white border border-gray-200/80 rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="text-sm text-gray-600">
             <p className="font-semibold">
@@ -213,15 +212,17 @@ export default function FilaPage() {
                       'pending': 'bg-yellow-100 text-yellow-800',
                       'syncing': 'bg-blue-100 text-blue-800',
                       'failed': 'bg-red-100 text-red-800',
+                      'failed_permanent': 'bg-red-200 text-red-900',
                       'synced': 'bg-green-100 text-green-800'
-                    }[record.syncStatus] || 'bg-gray-100 text-gray-800'
+                    }[record.syncStatus as string] || 'bg-gray-100 text-gray-800'
                     
                     const statusIcon = {
                       'pending': '⏳',
                       'syncing': '🔄',
                       'failed': '❌',
+                      'failed_permanent': '💀',
                       'synced': '✅'
-                    }[record.syncStatus] || '❓'
+                    }[record.syncStatus as string] || '❓'
 
                     return (
                       <div key={record.id} className="border rounded-lg p-3 bg-white">
@@ -320,17 +321,16 @@ export default function FilaPage() {
             )}
           </div>
         )}
-        </div>
+      </div>
 
-        <div className="bg-blue-50 rounded-2xl p-6 border border-blue-200 mt-6">
-          <h2 className="font-medium text-blue-900 mb-2">ℹ️ Como funciona</h2>
-          <ul className="text-sm text-blue-800 space-y-1">
-            <li>• Quando offline, as marcações são salvas localmente</li>
-            <li>• A sincronização acontece automaticamente quando a conexão volta</li>
-            <li>• Você pode forçar a sincronização clicando no botão "Sincronizar"</li>
-            <li>• As marcações são processadas na ordem que foram criadas</li>
-          </ul>
-        </div>
+      <div className="bg-blue-50/50 rounded-2xl p-6 border border-blue-200/50 mt-6">
+        <h2 className="font-medium text-blue-900 mb-2">ℹ️ Como funciona</h2>
+        <ul className="text-sm text-blue-800 space-y-1">
+          <li>• Quando offline, as marcações são salvas localmente</li>
+          <li>• A sincronização acontece automaticamente quando a conexão volta</li>
+          <li>• Você pode forçar a sincronização clicando no botão "Sincronizar"</li>
+          <li>• As marcações são processadas na ordem que foram criadas</li>
+        </ul>
       </div>
     </div>
   )

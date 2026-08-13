@@ -5,11 +5,21 @@ class ConsoleOptimizer {
   private originalError: typeof console.error;
   private originalWarn: typeof console.warn;
   private originalLog: typeof console.log;
+  private originalInfo: typeof console.info;
+  private originalDebug: typeof console.debug;
+  private initialized = false;
   
   constructor() {
     this.originalError = console.error;
     this.originalWarn = console.warn;
     this.originalLog = console.log;
+    this.originalInfo = console.info;
+    this.originalDebug = console.debug;
+  }
+
+  private shouldSilenceProductionConsole(): boolean {
+    return process.env.NODE_ENV === 'production' &&
+      process.env.NEXT_PUBLIC_ENABLE_PRODUCTION_CONSOLE !== 'true';
   }
 
   private shouldFilter(message: string): boolean {
@@ -118,8 +128,21 @@ class ConsoleOptimizer {
   }
 
   public initialize(): void {
+    if (this.initialized) {
+      return;
+    }
+
+    this.initialized = true;
+
+    if (this.shouldSilenceProductionConsole()) {
+      console.log = () => undefined;
+      console.info = () => undefined;
+      console.debug = () => undefined;
+      return;
+    }
+
     if (process.env.NODE_ENV !== 'development') {
-      return; // Só otimizar em desenvolvimento
+      return;
     }
 
     // Interceptar console.error ULTRA-AGRESSIVAMENTE
@@ -183,6 +206,9 @@ class ConsoleOptimizer {
     console.error = this.originalError;
     console.warn = this.originalWarn;
     console.log = this.originalLog;
+    console.info = this.originalInfo;
+    console.debug = this.originalDebug;
+    this.initialized = false;
   }
   // 🚫 NOVO: Bloquear argumentos problemáticos AGRESSIVAMENTE
   private shouldBlockArgs(args: any[]): boolean {
@@ -265,8 +291,8 @@ class ConsoleOptimizer {
 // Singleton
 const consoleOptimizer = new ConsoleOptimizer();
 
-// Auto-inicializar em desenvolvimento
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+// Auto-inicializar no cliente o mais cedo possível.
+if (typeof window !== 'undefined') {
   consoleOptimizer.initialize();
 }
 

@@ -4,8 +4,8 @@ import React, { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 
 // ✅ LAZY LOADING PARA EVITAR TDZ - SEGUINDO PADRÃO EXATO
-const InitialFaceVerificationRefactored = dynamic(
-  () => import('@/components/face-verification/InitialFaceVerificationRefactored'),
+const InitialFaceVerification = dynamic(
+  () => import('@/components/face-verification/InitialFaceVerification'),
   {
     ssr: false,
     loading: () => (
@@ -30,7 +30,7 @@ export default function VerificarFacePage() {
         </div>
       </div>
     }>
-      <InitialFaceVerificationRefactored />
+      <InitialFaceVerification />
     </Suspense>
   );
 }

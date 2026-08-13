@@ -63,3 +63,11 @@
 
 /* Importar sistema de navegação padronizado */
 @import '../styles/navigation.css';
+
+/* ✅ Cantos arredondados premium para todos os cards brancos */
+div.bg-white.rounded-lg,
+div.bg-white.rounded-xl,
+.card,
+.bg-white[class*="rounded-"] {
+  border-radius: 1rem !important; /* 16px (rounded-2xl) */
+}

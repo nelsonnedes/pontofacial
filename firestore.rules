@@ -103,7 +103,7 @@ service cloud.firestore {
     }
 
     match /usuarios/{userId} {
-      allow read: if hasAnyPermission(['admin:dashboard', 'admin:users']) || isOwner(userId);
+      allow read: if isSignedIn();
       allow create: if hasPermission('admin:users') || (isOwner(userId) && safeUserRoleOnCreate());
       allow update: if hasPermission('admin:users') || (
         isOwner(userId) &&
@@ -222,16 +222,12 @@ service cloud.firestore {
 
     match /employees/{employeeId} {
       allow create: if hasPermission('admin:employees');
-      allow read: if hasAnyPermission([
-          'admin:dashboard',
-          'admin:companies',
-          'admin:employees',
-          'admin:hr',
-          'admin:records',
-          'admin:reports',
-          'admin:schedules',
-          'admin:users'
-        ]) || resourceOwnerMatches();
+      allow read: if hasAnyPermission(['admin:employees', 'admin:users', 'admin:records']) || 
+                    isOwner(employeeId) || 
+                    (resource != null && 
+                     ((resource.data.keys().hasAny(['authUid']) && resource.data.authUid == request.auth.uid) ||
+                      (resource.data.keys().hasAny(['userId']) && resource.data.userId == request.auth.uid) ||
+                      (resource.data.keys().hasAny(['uid']) && resource.data.uid == request.auth.uid)));
       allow update, delete: if hasPermission('admin:employees');
     }
 
@@ -273,6 +269,12 @@ service cloud.firestore {
       allow create: if hasPermission('admin:records') || requestOwnerMatches();
       allow read: if hasPermission('admin:records') || resourceOwnerMatches();
       allow update, delete: if hasPermission('admin:records');
+    }
+
+    match /user_credentials/{credentialId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid);
+      allow update, delete: if request.auth != null && resource != null && resource.data.userId == request.auth.uid;
     }
 
     match /{document=**} {

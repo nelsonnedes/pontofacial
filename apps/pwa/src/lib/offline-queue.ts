@@ -2,6 +2,7 @@ import Dexie, { Table } from 'dexie';
 import { db as firebaseDb, getFirebaseApp } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { encryptLocalData, decryptLocalData } from './encryption';
 
 // Interface para pendências da fila offline
 export interface Pendencia {
@@ -34,7 +35,7 @@ export interface OfflineTimeRecord {
     language: string;
     timezone: string;
   };
-  syncStatus: 'pending' | 'syncing' | 'synced' | 'failed';
+  syncStatus: 'pending' | 'syncing' | 'synced' | 'failed' | 'failed_permanent';
   syncAttempts: number;
   lastSyncAttempt?: number;
   syncError?: string;
@@ -103,10 +104,22 @@ export class OfflineQueueManager {
     }
   }
 
-  // Adicionar registro de ponto à fila
+  // Adicionar registro de ponto à fila com criptografia local AES-GCM
   async addTimeRecord(record: Omit<OfflineTimeRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<number> {
+    let encryptedEmbedding = record.faceEmbedding;
+    
+    if (record.faceEmbedding && record.faceEmbedding.trim()) {
+      try {
+        const { iv, ciphertext } = await encryptLocalData(record.faceEmbedding, record.userId);
+        encryptedEmbedding = JSON.stringify({ iv, ciphertext });
+      } catch (encryptError) {
+        console.error('⚠️ Falha ao criptografar evidência facial localmente:', encryptError);
+      }
+    }
+
     const id = await db.timeRecords.add({
       ...record,
+      faceEmbedding: encryptedEmbedding,
       syncStatus: 'pending',
       syncAttempts: 0,
       createdAt: Date.now(),
@@ -233,6 +246,17 @@ export class OfflineQueueManager {
         lastSyncAttempt: Date.now()
       });
 
+      // Descriptografar embedding facial antes de sincronizar para o Firestore se estiver criptografado localmente
+      let decryptedEmbedding = record.faceEmbedding;
+      if (record.faceEmbedding && record.faceEmbedding.includes('"ciphertext"') && record.faceEmbedding.includes('"iv"')) {
+        try {
+          const parsed = JSON.parse(record.faceEmbedding);
+          decryptedEmbedding = await decryptLocalData(parsed.ciphertext, parsed.iv, record.userId);
+        } catch (decryptError) {
+          console.error('⚠️ Falha ao descriptografar evidência facial local para sync:', decryptError);
+        }
+      }
+
       // Preparar dados para o Firestore
       const firestoreData = {
         // Campos do esquema novo (timeRecords)
@@ -242,7 +266,7 @@ export class OfflineQueueManager {
         clientTimestamp: record.timestamp,
         clientRecordId: `${record.userId}-${record.id || record.createdAt || record.timestamp}-${record.type}`,
         location: record.location,
-        faceEvidence: record.faceEmbedding,
+        faceEvidence: decryptedEmbedding,
         
         // Campos do esquema antigo (marcacoes) mantidos para compatibilidade
         usuarioId: record.userId,
@@ -284,8 +308,17 @@ export class OfflineQueueManager {
         throw new Error(`Firebase retornou status ${response.status}`);
       }
     } catch (error) {
+      const isPermanent = error instanceof Error && (
+        error.message.includes('Backend recusou') ||
+        error.message.includes('permission') ||
+        error.message.includes('insufficient') ||
+        error.message.includes('invalid') ||
+        error.message.includes('403') ||
+        error.message.includes('400')
+      );
+      
       await db.timeRecords.update(record.id!, {
-        syncStatus: 'failed',
+        syncStatus: isPermanent ? 'failed_permanent' : 'failed',
         syncError: error instanceof Error ? error.message : 'Erro desconhecido'
       });
       console.error('❌ Erro ao sincronizar registro:', error);

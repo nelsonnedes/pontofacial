@@ -239,96 +239,98 @@ export default function AdminRHPage() {
       </div>
 
       {/* Conteúdo Principal */}
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {stats.error && (
-          <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-            {stats.error}
-          </div>
-        )}
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <main className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] mt-6">
+          {stats.error && (
+            <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+              {stats.error}
+            </div>
+          )}
 
-        {/* Estatísticas rápidas */}
-        <div className="mb-8 grid grid-cols-1 md:grid-cols-5 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-red-600 mr-4">🔍</div>
-              <div>
-                <p className="text-sm text-gray-500">Pontos Pendentes</p>
-                <p className="text-2xl font-bold text-gray-900">{statsLoading ? '...' : stats.pendingPoints}</p>
+          {/* Estatísticas rápidas */}
+          <div className="mb-8 grid grid-cols-1 md:grid-cols-5 gap-6">
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-red-600 mr-4">🔍</div>
+                <div>
+                  <p className="text-sm text-gray-500">Pontos Pendentes</p>
+                  <p className="text-2xl font-bold text-gray-900">{statsLoading ? '...' : stats.pendingPoints}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-blue-600 mr-4">🏖️</div>
+                <div>
+                  <p className="text-sm text-gray-500">Férias atuais</p>
+                  <p className="text-2xl font-bold text-gray-900">{statsLoading ? '...' : stats.activeVacations}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-green-600 mr-4">🏥</div>
+                <div>
+                  <p className="text-sm text-gray-500">Atestados atuais</p>
+                  <p className="text-2xl font-bold text-gray-900">{statsLoading ? '...' : stats.activeMedicalLeaves}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-yellow-600 mr-4">⏰</div>
+                <div>
+                  <p className="text-sm text-gray-500">Atrasos Hoje</p>
+                  <p className="text-2xl font-bold text-gray-900">{statsLoading ? '...' : stats.todayDelays}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-purple-600 mr-4">📋</div>
+                <div>
+                  <p className="text-sm text-gray-500">Total Análises</p>
+                  <p className="text-2xl font-bold text-gray-900">{statsLoading ? '...' : stats.totalAnalysis}</p>
+                  <button
+                    type="button"
+                    onClick={loadHrStats}
+                    disabled={statsLoading}
+                    className="mt-1 text-xs text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                  >
+                    {statsLoading ? 'Atualizando' : 'Atualizar dados'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-blue-600 mr-4">🏖️</div>
-              <div>
-                <p className="text-sm text-gray-500">Férias atuais</p>
-                <p className="text-2xl font-bold text-gray-900">{statsLoading ? '...' : stats.activeVacations}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-green-600 mr-4">🏥</div>
-              <div>
-                <p className="text-sm text-gray-500">Atestados atuais</p>
-                <p className="text-2xl font-bold text-gray-900">{statsLoading ? '...' : stats.activeMedicalLeaves}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-yellow-600 mr-4">⏰</div>
-              <div>
-                <p className="text-sm text-gray-500">Atrasos Hoje</p>
-                <p className="text-2xl font-bold text-gray-900">{statsLoading ? '...' : stats.todayDelays}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-purple-600 mr-4">📋</div>
-              <div>
-                <p className="text-sm text-gray-500">Total Análises</p>
-                <p className="text-2xl font-bold text-gray-900">{statsLoading ? '...' : stats.totalAnalysis}</p>
-                <button
-                  type="button"
-                  onClick={loadHrStats}
-                  disabled={statsLoading}
-                  className="mt-1 text-xs text-blue-600 hover:text-blue-700 disabled:text-gray-400"
-                >
-                  {statsLoading ? 'Atualizando' : 'Atualizar dados'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Alertas importantes */}
-        <div className="mb-8">
-          <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-blue-700">
-                  <strong>Fluxo operacional:</strong> análises, férias e atestados desta tela são lidos das coleções do RH.
-                  A aplicação em horários acontece somente quando o funcionário possui escala vinculada.
-                </p>
+          {/* Alertas importantes */}
+          <div className="mb-8">
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-blue-700">
+                    <strong>Fluxo operacional:</strong> análises, férias e atestados desta tela são lidos das coleções do RH.
+                    A aplicação em horários acontece somente quando o funcionário possui escala vinculada.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Componente de Gerenciamento RH */}
-        <HRManagement />
-      </main>
+          {/* Componente de Gerenciamento RH */}
+          <HRManagement />
+        </main>
+      </div>
 
       {/* Links úteis */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8">

@@ -71,51 +71,55 @@ function normalizeCertificate(value: Partial<LocalCertificate>): LocalCertificat
   };
 }
 
-function getConnectorUrl(port: number): string {
-  const safePort = Number.isInteger(port) && port > 0 ? port : DEFAULT_CERTIFICATE_CONNECTOR_PORT;
-  return `http://127.0.0.1:${safePort}`;
-}
-
 export async function fetchLocalCertificates(port = DEFAULT_CERTIFICATE_CONNECTOR_PORT): Promise<{
   certificates: LocalCertificate[];
   connectorUrl: string;
   warnings: string[];
 }> {
-  const baseUrl = getConnectorUrl(port);
+  const safePort = Number.isInteger(port) && port > 0 ? port : DEFAULT_CERTIFICATE_CONNECTOR_PORT;
+  const urlsToTry = [
+    `http://localhost:${safePort}`,
+    `http://127.0.0.1:${safePort}`
+  ];
 
-  try {
-    const response = await fetch(`${baseUrl}/certificates`, {
-      method: 'GET',
-      mode: 'cors',
-      cache: 'no-store',
-      headers: {
-        Accept: 'application/json'
+  let lastError: unknown = null;
+  for (const baseUrl of urlsToTry) {
+    try {
+      const response = await fetch(`${baseUrl}/certificates`, {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json'
+        }
+      });
+
+      const payload = (await response.json()) as CertificateConnectorResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || `Conector respondeu HTTP ${response.status}.`);
       }
-    });
 
-    const payload = (await response.json()) as CertificateConnectorResponse;
+      const certificates = (payload.certificates || [])
+        .map(normalizeCertificate)
+        .filter((certificate): certificate is LocalCertificate => Boolean(certificate));
 
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || `Conector respondeu HTTP ${response.status}.`);
+      return {
+        certificates,
+        connectorUrl: baseUrl,
+        warnings: payload.warnings || []
+      };
+    } catch (error) {
+      console.warn(`Tentativa de conexão com ${baseUrl} falhou:`, error);
+      lastError = error;
     }
-
-    const certificates = (payload.certificates || [])
-      .map(normalizeCertificate)
-      .filter((certificate): certificate is LocalCertificate => Boolean(certificate));
-
-    return {
-      certificates,
-      connectorUrl: baseUrl,
-      warnings: payload.warnings || []
-    };
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : 'Não foi possível falar com o conector local.';
-
-    throw new Error(
-      `${detail} Inicie no terminal: cd C:\\ponto-facial && pnpm cert:connector. ` +
-      `Se usou outra porta, selecione a porta correta nesta tela.`
-    );
   }
+
+  const detail = lastError instanceof Error ? lastError.message : 'Não foi possível falar com o conector local.';
+  throw new Error(
+    `${detail} Inicie no terminal: cd C:\\ponto-facial && pnpm cert:connector. ` +
+    `Se usou outra porta, selecione a porta correta nesta tela.`
+  );
 }
 
 export function formatCertificateValidity(value: string): string {

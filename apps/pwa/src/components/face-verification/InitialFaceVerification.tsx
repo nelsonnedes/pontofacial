@@ -475,7 +475,7 @@ function InitialFaceVerificationContent() {
 }
 
 // ✅ COMPONENTE PRINCIPAL COM SUSPENSE - SEGUINDO PADRÃO EXATO DO MARCAR PONTO
-export default function InitialFaceVerificationRefactored() {
+export default function InitialFaceVerification() {
   return (
     <Suspense fallback={<FaceVerificationLoading />}>
       <InitialFaceVerificationContent />

@@ -72,6 +72,11 @@ const siteKey = (
   getEnv("NEXT_PUBLIC_RECAPTCHA_SITE_KEY") ||
   ""
 ).trim();
+const appCheckProvider = (
+  getEnv("NEXT_PUBLIC_FIREBASE_APPCHECK_PROVIDER") ||
+  getEnv("NEXT_PUBLIC_APPCHECK_PROVIDER") ||
+  "recaptcha-v3"
+).trim().toLowerCase();
 const enforceAppCheck = getEnv("ENFORCE_APP_CHECK") === "true";
 const appCheckDebugToken = getEnv("NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG_TOKEN").trim();
 const releaseProfile = (
@@ -89,6 +94,7 @@ const requiredAppTermsVersion = getEnv("NEXT_PUBLIC_REQUIRED_APP_TERMS_VERSION")
 const requiredPrivacyNoticeVersion = getEnv("NEXT_PUBLIC_REQUIRED_PRIVACY_NOTICE_VERSION").trim();
 const requiredBiometricNoticeVersion = getEnv("NEXT_PUBLIC_REQUIRED_BIOMETRIC_NOTICE_VERSION").trim();
 const approvedBiometricEngines = new Set(["server", "provider"]);
+const approvedAppCheckProviders = new Set(["recaptcha-v3", "recaptcha-enterprise", "enterprise"]);
 
 const isPlaceholder =
   placeholderValues.has(siteKey) ||
@@ -109,7 +115,14 @@ if (enforceAppCheck && !siteKey) {
 }
 
 if (siteKey && siteKey.length < 20) {
-  console.error("NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY parece curta demais para uma chave reCAPTCHA v3 valida.");
+  console.error("NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY parece curta demais para uma chave reCAPTCHA valida.");
+  process.exit(1);
+}
+
+if (!approvedAppCheckProviders.has(appCheckProvider)) {
+  console.error(
+    "NEXT_PUBLIC_FIREBASE_APPCHECK_PROVIDER deve ser recaptcha-v3 ou recaptcha-enterprise."
+  );
   process.exit(1);
 }
 

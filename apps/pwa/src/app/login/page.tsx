@@ -2,7 +2,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { signInWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '@/lib/firebase'
+import { getToken } from 'firebase/app-check'
+import { auth, getFirebaseAppCheck } from '@/lib/firebase'
 import Link from 'next/link'
 
 export default function Login(){
@@ -23,37 +24,46 @@ export default function Login(){
     return () => unsubscribe()
   }, [router])
 
+  async function ensureAppCheckReady(): Promise<boolean> {
+    const appCheck = getFirebaseAppCheck()
+
+    if (!appCheck) {
+      return true
+    }
+
+    try {
+      await getToken(appCheck, false)
+      return true
+    } catch (err: any) {
+      const isThrottled = err?.code === 'appCheck/throttled' ||
+        String(err?.message || '').includes('throttled')
+
+      setMsg(
+        isThrottled
+          ? '❌ Validação de segurança temporariamente bloqueada pelo App Check. Feche todas as guias anônimas e tente novamente após ajustarmos a configuração.'
+          : '❌ Não foi possível validar a segurança do navegador pelo App Check. Verifique a configuração do reCAPTCHA/App Check antes de tentar login.'
+      )
+      return false
+    }
+  }
+
   async function handleLogin(e: React.FormEvent){
     e.preventDefault()
     setMsg(undefined)
     setLoading(true)
-    
-    // 🔍 DEBUG: Log dos dados sendo enviados
-    console.log('🔍 DEBUG Login:', {
-      email: email,
-      senha: senha ? '***' : '(empty)',
-      emailLength: email.length,
-      senhaLength: senha.length,
-      authConfigured: !!auth
-    })
-    
+
     try{
-      console.log('🚀 Tentando autenticar com Firebase...')
-      const userCredential = await signInWithEmailAndPassword(auth, email, senha)
-      console.log('✅ Autenticação bem-sucedida:', userCredential.user?.email)
+      const appCheckReady = await ensureAppCheckReady()
+      if (!appCheckReady) {
+        return
+      }
+
+      await signInWithEmailAndPassword(auth, email, senha)
       setMsg('✅ Autenticado com sucesso! Redirecionando...')
       setTimeout(() => {
         router.push('/app')
       }, 1500)
     }catch(err:any){
-      // 🔍 DEBUG: Log detalhado do erro
-      console.error('❌ Erro de autenticação detalhado:', {
-        code: err.code,
-        message: err.message,
-        details: err.details,
-        fullError: err
-      })
-      
       let errorMessage = 'Falha no login'
       if (err.code === 'auth/user-not-found') {
         errorMessage = 'Usuário não encontrado no Firebase'
@@ -65,6 +75,10 @@ export default function Login(){
         errorMessage = 'Muitas tentativas. Tente novamente mais tarde'
       } else if (err.code === 'auth/invalid-credential') {
         errorMessage = 'Credenciais inválidas - usuário não existe ou senha errada'
+      } else if (err.code === 'auth/network-request-failed') {
+        errorMessage = 'Falha de rede ao acessar o Firebase'
+      } else if (String(err?.message || '').includes('AppCheck')) {
+        errorMessage = 'Falha na validação de segurança App Check'
       }
       
       setMsg(`❌ ${errorMessage} (${err.code})`)
@@ -108,6 +122,8 @@ export default function Login(){
                 value={email} 
                 onChange={e=>setEmail(e.target.value)} 
                 placeholder="Digite seu email"
+                name="email"
+                autoComplete="username"
                 required
                 disabled={loading}
               />
@@ -124,6 +140,7 @@ export default function Login(){
                   value={senha} 
                   onChange={e=>setSenha(e.target.value)} 
                   placeholder="Digite sua senha"
+                  name="password"
                   autoComplete="current-password"
                   required
                   disabled={loading}

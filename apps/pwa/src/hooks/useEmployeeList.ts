@@ -58,6 +58,16 @@ const INITIAL_FILTERS: EmployeeFilters = {
   hasPhoto: 'all'
 };
 
+const employeeListDebugEnabled =
+  process.env.NODE_ENV === 'development' &&
+  process.env.NEXT_PUBLIC_VERBOSE_EMPLOYEE_LOGS === 'true';
+
+function logEmployeeListDebug(...args: unknown[]): void {
+  if (employeeListDebugEnabled) {
+    console.debug('[employee-list]', ...args);
+  }
+}
+
 export function useEmployeeList() {
   // ✅ ESTADOS
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -70,7 +80,7 @@ export function useEmployeeList() {
     try {
       setIsLoading(true);
       setError('');
-      console.log('🔄 Carregando lista de funcionários...');
+      logEmployeeListDebug('Carregando lista de funcionários...');
 
       const employeesQuery = query(
         collection(db, 'employees'),
@@ -110,7 +120,7 @@ export function useEmployeeList() {
       });
 
       setEmployees(employeesList);
-      console.log(`✅ ${employeesList.length} funcionários carregados`);
+      logEmployeeListDebug(`${employeesList.length} funcionários carregados`);
       
     } catch (error: any) {
       console.error('❌ Erro ao carregar funcionários:', error);
@@ -181,14 +191,14 @@ export function useEmployeeList() {
   // ✅ EXCLUIR FUNCIONÁRIO
   const deleteEmployee = useCallback(async (employeeId: string): Promise<boolean> => {
     try {
-      console.log('🗑️ Excluindo funcionário:', employeeId);
+      logEmployeeListDebug('Excluindo funcionário:', employeeId);
       
       await deleteDoc(doc(db, 'employees', employeeId));
       
       // Remover da lista local
       setEmployees(prev => prev.filter(emp => emp.id !== employeeId));
       
-      console.log('✅ Funcionário excluído com sucesso');
+      logEmployeeListDebug('Funcionário excluído com sucesso');
       return true;
       
     } catch (error: any) {
@@ -201,7 +211,7 @@ export function useEmployeeList() {
   // ✅ ALTERNAR STATUS DO FUNCIONÁRIO (ATIVAR/DESATIVAR)
   const toggleEmployeeStatus = useCallback(async (employeeId: string, newStatus: 'active' | 'inactive'): Promise<boolean> => {
     try {
-      console.log(`🔄 Alterando status do funcionário ${employeeId} para: ${newStatus}`);
+      logEmployeeListDebug(`Alterando status do funcionário ${employeeId} para: ${newStatus}`);
       
       await updateDoc(doc(db, 'employees', employeeId), {
         status: newStatus,
@@ -215,7 +225,7 @@ export function useEmployeeList() {
           : emp
       ));
       
-      console.log('✅ Status do funcionário alterado com sucesso');
+      logEmployeeListDebug('Status do funcionário alterado com sucesso');
       return true;
       
     } catch (error: any) {
@@ -228,7 +238,7 @@ export function useEmployeeList() {
   // ✅ REMOVER CADASTRO FACIAL (PARA RECADASTRO)
   const removeFacialRegistration = useCallback(async (employeeId: string): Promise<boolean> => {
     try {
-      console.log('🔄 Removendo cadastro facial do funcionário:', employeeId);
+      logEmployeeListDebug('Removendo cadastro facial do funcionário:', employeeId);
       
       await updateDoc(doc(db, 'employees', employeeId), {
         faceEmbedding: null,
@@ -250,7 +260,7 @@ export function useEmployeeList() {
           : emp
       ));
       
-      console.log('✅ Cadastro facial removido com sucesso');
+      logEmployeeListDebug('Cadastro facial removido com sucesso');
       return true;
       
     } catch (error: any) {

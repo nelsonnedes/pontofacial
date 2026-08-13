@@ -324,7 +324,7 @@ function FacialRegistrationContent() {
 }
 
 // ✅ COMPONENTE PRINCIPAL COM SUSPENSE - SEGUINDO PADRÃO EXATO DO MARCAR PONTO
-export default function FacialRegistrationRefactored() {
+export default function FacialRegistration() {
   return (
     <Suspense fallback={<FacialRegistrationLoading />}>
       <FacialRegistrationContent />

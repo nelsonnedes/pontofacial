@@ -241,75 +241,77 @@ export default function AdminGeofencesPage() {
       </div>
 
       {/* Conteúdo Principal */}
-      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {stats.error && (
-          <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-            {stats.error}
-          </div>
-        )}
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <main className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 sm:p-8 lg:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] mt-6">
+          {stats.error && (
+            <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+              {stats.error}
+            </div>
+          )}
 
-        {/* Estatísticas rápidas */}
-        <div className="mb-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-blue-600 mr-4">🎯</div>
-              <div>
-                <p className="text-sm text-gray-500">Cercas Ativas</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {statsLoading ? '...' : stats.activeFences}
-                </p>
+          {/* Estatísticas rápidas */}
+          <div className="mb-8 grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-blue-600 mr-4">🎯</div>
+                <div>
+                  <p className="text-sm text-gray-500">Cercas Ativas</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {statsLoading ? '...' : stats.activeFences}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-green-600 mr-4">✅</div>
+                <div>
+                  <p className="text-sm text-gray-500">Validações Hoje</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {statsLoading ? '...' : stats.validationsToday}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-yellow-600 mr-4">📊</div>
+                <div>
+                  <p className="text-sm text-gray-500">Taxa de Sucesso</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {statsLoading ? '...' : stats.successRate === null ? 'Sem dados' : `${stats.successRate}%`}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50/80 rounded-2xl border border-gray-100/80 p-6">
+              <div className="flex items-center">
+                <div className="text-2xl text-purple-600 mr-4">📍</div>
+                <div>
+                  <p className="text-sm text-gray-500">Precisão Média</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {statsLoading ? '...' : stats.averageAccuracy === null ? 'Sem dados' : `${stats.averageAccuracy}m`}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={loadGeofenceStats}
+                    disabled={statsLoading}
+                    className="mt-1 text-xs text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                  >
+                    {statsLoading ? 'Atualizando' : 'Atualizar dados'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-green-600 mr-4">✅</div>
-              <div>
-                <p className="text-sm text-gray-500">Validações Hoje</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {statsLoading ? '...' : stats.validationsToday}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-yellow-600 mr-4">📊</div>
-              <div>
-                <p className="text-sm text-gray-500">Taxa de Sucesso</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {statsLoading ? '...' : stats.successRate === null ? 'Sem dados' : `${stats.successRate}%`}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="text-2xl text-purple-600 mr-4">📍</div>
-              <div>
-                <p className="text-sm text-gray-500">Precisão Média</p>
-                <p className="text-2xl font-bold text-gray-900">
-                  {statsLoading ? '...' : stats.averageAccuracy === null ? 'Sem dados' : `${stats.averageAccuracy}m`}
-                </p>
-                <button
-                  type="button"
-                  onClick={loadGeofenceStats}
-                  disabled={statsLoading}
-                  className="mt-1 text-xs text-blue-600 hover:text-blue-700 disabled:text-gray-400"
-                >
-                  {statsLoading ? 'Atualizando' : 'Atualizar dados'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Componente de Gerenciamento */}
-        <GeofenceManager />
-      </main>
+          {/* Componente de Gerenciamento */}
+          <GeofenceManager />
+        </main>
+      </div>
 
       {/* Footer */}
       <footer className="bg-white border-t mt-12">

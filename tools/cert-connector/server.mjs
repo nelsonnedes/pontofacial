@@ -10,7 +10,9 @@ const HOST = process.env.PONTO_FACIAL_CERT_HOST || '127.0.0.1';
 const PORT = Number(process.env.PONTO_FACIAL_CERT_PORT || 8765);
 const DEFAULT_ALLOWED_ORIGINS = [
   'https://pontofacial.web.app',
+  'https://pontofacial.firebaseapp.com',
   'https://dbponto-facial.web.app',
+  'https://dbponto-facial.firebaseapp.com',
   'http://localhost:3000',
   'http://127.0.0.1:3000'
 ];

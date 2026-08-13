@@ -396,11 +396,12 @@ export function formatTimeRecordType(type: OfflineTimeRecord['type']): string {
 
 // Função auxiliar para formatar status de sincronização
 export function formatSyncStatus(status: OfflineTimeRecord['syncStatus']): { text: string; color: string } {
-  const statuses = {
+  const statuses: Record<string, { text: string; color: string }> = {
     pending: { text: '⏳ Pendente', color: 'text-yellow-600' },
     syncing: { text: '🔄 Sincronizando', color: 'text-blue-600' },
     synced: { text: '✅ Sincronizado', color: 'text-green-600' },
-    failed: { text: '❌ Falhou', color: 'text-red-600' }
+    failed: { text: '❌ Falhou', color: 'text-red-600' },
+    failed_permanent: { text: '💀 Rejeitado pelo Backend', color: 'text-purple-600' }
   };
   
   return statuses[status] || { text: status, color: 'text-gray-600' };

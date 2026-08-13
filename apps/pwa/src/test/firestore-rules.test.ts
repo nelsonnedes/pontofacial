@@ -179,6 +179,24 @@ describe('firestore.rules', () => {
     await assertSucceeds(updateDoc(doc(adminDb(), 'geofences/main'), { radius: 120 }));
   });
 
+  it('permite que o usuario gerencie suas proprias credenciais de passkey e bloqueia terceiros', async () => {
+    const credPath = 'user_credentials/cred-1';
+    
+    await assertSucceeds(
+      setDoc(doc(authedDb('user-a'), credPath), {
+        userId: 'user-a',
+        publicKey: 'mock-key',
+        registeredAt: Date.now()
+      })
+    );
+
+    await assertFails(getDoc(doc(authedDb('user-b'), credPath)));
+    await assertSucceeds(getDoc(doc(authedDb('user-a'), credPath)));
+    await assertFails(updateDoc(doc(authedDb('user-b'), credPath), { publicKey: 'hacked' }));
+    await assertFails(deleteDoc(doc(authedDb('user-b'), credPath)));
+    await assertSucceeds(deleteDoc(doc(authedDb('user-a'), credPath)));
+  });
+
   it('confirma que o ambiente carregou as regras do projeto', () => {
     expect(rules).toContain('match /timeRecords/{recordId}');
     expect(rules).toContain('allow create: if false');

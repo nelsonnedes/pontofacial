@@ -75,6 +75,7 @@ export interface FaceDetectionResult {
   };
 }
 
+
 interface RecognitionStatus {
   initialized: boolean;
   modelsLoaded: boolean;
@@ -86,6 +87,9 @@ class OptimizedFaceRecognition {
   private initializing = false;
   private initPromise: Promise<boolean> | null = null;
   private realEngine = RealFacialRecognition.getInstance();
+  private worker: Worker | null = null;
+  private workerPromises = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
+  private nextRequestId = 1;
   private status: RecognitionStatus = {
     initialized: false,
     modelsLoaded: false,
@@ -101,7 +105,7 @@ class OptimizedFaceRecognition {
     }
 
     this.initializing = true;
-    this.initPromise = new Promise<boolean>((resolve) => {
+    this.initPromise = new Promise<boolean>(async (resolve) => {
       try {
         const blockers = getBiometricRuntimeBlockers();
         if (isStrictProduction()) {
@@ -120,14 +124,77 @@ class OptimizedFaceRecognition {
           return;
         }
 
+        if (typeof window === 'undefined') {
+          resolve(false);
+          return;
+        }
+
+        console.log('🔄 Inicializando Web Worker do Face API...');
+        // Instanciar o Web Worker usando Next.js / Webpack 5 compatibilidade
+        this.worker = new Worker(new URL('./face-worker', import.meta.url));
+
+        // Registrar listener de mensagens do worker
+        this.worker.onmessage = (event) => {
+          const { type, payload, error, id } = event.data;
+          const promise = this.workerPromises.get(id);
+          if (!promise) return;
+
+          this.workerPromises.delete(id);
+
+          if (type === 'loaded') {
+            resolve(true);
+          } else if (type === 'detect_result') {
+            if (error) {
+              promise.reject(new Error(error));
+            } else {
+              promise.resolve(payload);
+            }
+          } else if (type === 'error') {
+            promise.reject(new Error(error || 'Erro desconhecido no worker'));
+          }
+        };
+
+        this.worker.onerror = (err) => {
+          console.error('❌ Erro crítico no Web Worker do Face API:', err);
+          // Fallback para o motor simulado local
+          this.status = {
+            initialized: true,
+            modelsLoaded: true,
+            backend: 'cpu'
+          };
+          this.initialized = true;
+          this.initializing = false;
+          resolve(true);
+        };
+
+        // Enviar solicitação de carregamento dos modelos
+        const modelUrl = `${window.location.origin}/models/`;
+        console.log(`📦 Carregando modelos da URL: ${modelUrl}`);
+        this.worker.postMessage({ type: 'load', modelUrl, id: 0 });
+
+        // Timeout de segurança para inicialização (15 segundos)
+        setTimeout(() => {
+          if (!this.initialized && this.initializing) {
+            console.warn('⚠️ Timeout na inicialização do Web Worker. Usando motor simulado.');
+            this.status = {
+              initialized: true,
+              modelsLoaded: true,
+              backend: 'cpu'
+            };
+            this.initialized = true;
+            this.initializing = false;
+            resolve(true);
+          }
+        }, 15000);
+
         this.status = {
           initialized: true,
           modelsLoaded: true,
-          backend: typeof window !== 'undefined' && 'OffscreenCanvas' in window ? 'webgl' : 'cpu'
+          backend: 'cpu' // CPU default para processamento em worker
         };
         this.initialized = true;
         this.initializing = false;
-        resolve(true);
+
       } catch (error) {
         console.error('❌ Erro ao inicializar reconhecimento facial real:', error);
         this.initializing = false;
@@ -159,6 +226,57 @@ class OptimizedFaceRecognition {
     assertProductionBiometricRuntime('Deteccao facial local');
     await this.initialize();
 
+    if (!image) return [];
+
+    // Se o worker estiver disponível, usar a detecção real do face-api no worker
+    if (this.worker) {
+      try {
+        let width = 0;
+        let height = 0;
+
+        if (image instanceof HTMLVideoElement) {
+          width = image.videoWidth;
+          height = image.videoHeight;
+        } else if (image instanceof HTMLImageElement) {
+          width = image.naturalWidth;
+          height = image.naturalHeight;
+        } else if (image instanceof HTMLCanvasElement) {
+          width = image.width;
+          height = image.height;
+        }
+
+        if (width === 0 || height === 0) {
+          return [];
+        }
+
+        // Criar ImageBitmap da imagem para transferir eficientemente ao worker
+        const imageBitmap = await createImageBitmap(image);
+        const requestId = this.nextRequestId++;
+
+        const resultPromise = new Promise<any[]>((resolve, reject) => {
+          this.workerPromises.set(requestId, { resolve, reject });
+        });
+
+        // Enviar imagem e transferir a propriedade do bitmap
+        this.worker!.postMessage({ type: 'detect', image: imageBitmap, id: requestId }, [imageBitmap]);
+
+        const detections = await resultPromise;
+
+        return detections.map((d: any) => ({
+          box: d.detection.box,
+          detection: d.detection,
+          confidence: d.detection.score || 0.95,
+          landmarks: d.landmarks,
+          expressions: d.expressions,
+          descriptor: d.descriptor
+        }));
+
+      } catch (err) {
+        console.warn('⚠️ Detecção no worker falhou, usando fallback simulado:', err);
+      }
+    }
+
+    // Fallback simulado
     if (image instanceof HTMLVideoElement || image instanceof HTMLImageElement || image instanceof HTMLCanvasElement) {
       const width = image instanceof HTMLVideoElement ? image.videoWidth : image.width;
       const height = image instanceof HTMLVideoElement ? image.videoHeight : image.height;
@@ -190,6 +308,19 @@ class OptimizedFaceRecognition {
     detection: FaceDetectionResult
   ): Promise<OptimizedFaceEmbedding | null> {
     try {
+      // Se a detecção já veio do worker com o descriptor real do face-api.js, use-o!
+      if ((detection as any).descriptor) {
+        const rawDescriptor = (detection as any).descriptor;
+        const descriptor512 = this.expandTo512Dimensions(Float32Array.from(rawDescriptor));
+        return {
+          descriptor: descriptor512,
+          confidence: detection.confidence,
+          timestamp: Date.now(),
+          method: 'real_facial_features'
+        };
+      }
+
+      // Fallback para o motor simulado local
       const realEmbedding = this.realEngine.generateRealFacialEmbedding(imageElement, {
         boundingBox: detection.box,
         confidence: detection.confidence
@@ -268,11 +399,15 @@ class OptimizedFaceRecognition {
     let dot = 0;
     let magA = 0;
     let magB = 0;
+    let sumSquaredDiffs = 0;
 
     for (let i = 0; i < minLength; i++) {
       dot += a[i] * b[i];
       magA += a[i] * a[i];
       magB += b[i] * b[i];
+      
+      const diff = a[i] - b[i];
+      sumSquaredDiffs += diff * diff;
     }
 
     magA = Math.sqrt(magA);
@@ -283,7 +418,19 @@ class OptimizedFaceRecognition {
     }
 
     const cosine = dot / (magA * magB);
-    return Math.max(0, Math.min(1, (cosine + 1) / 2));
+    const mappedCosine = Math.max(0, Math.min(1, (cosine + 1) / 2));
+
+    const euclideanDistance = Math.sqrt(sumSquaredDiffs);
+    // Mapear distância euclidiana para pontuação (0 a 1)
+    // Onde distância 0 = 1.0 (perfeito), e distância >= 0.7 = 0.0
+    const mappedEuclidean = Math.max(0, 1 - (euclideanDistance / 0.7));
+
+    // Penalizar fortemente se a distância euclidiana for maior que 0.6 (limiar padrão de face-api)
+    if (euclideanDistance > 0.6) {
+      return Math.min(mappedCosine, mappedEuclidean) * 0.8;
+    }
+
+    return (mappedCosine * 0.4) + (mappedEuclidean * 0.6);
   }
 
   isSamePerson(

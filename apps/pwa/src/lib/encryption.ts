@@ -81,8 +81,8 @@ export function encryptEmbedding(embedding: OptimizedFaceEmbedding): string {
 
     const normalized = Array.from(normalizedDescriptor).map(value => {
       // Normalizar float para inteiro (0-255)
-      const normalized = Math.round((value + 1) * 127.5); // -1..1 -> 0..255
-      return Math.max(0, Math.min(255, normalized));
+      const val = Math.round((value + 1) * 127.5); // -1..1 -> 0..255
+      return Math.max(0, Math.min(255, val));
     });
 
     // Gerar chave de criptografia
@@ -255,5 +255,91 @@ export function compareEmbeddings(
   } catch (error) {
     console.error('❌ Erro ao comparar embeddings:', error);
     return 0;
+  }
+}
+
+/**
+ * 🔒 AES-GCM 256-bit Web Crypto API Encryption
+ * derives a secure unique key per user based on userId
+ */
+async function getOrDeriveAESKey(userId: string): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  const configuredKey = (process.env.NEXT_PUBLIC_ENCRYPTION_KEY || '').trim();
+  const saltSeed = configuredKey || 'ponto-facial-default-salt-value-for-offline-gcm';
+  
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(userId + saltSeed),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  );
+  
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: enc.encode("ponto-facial-fixed-salt-gcm-2026"),
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    baseKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+export async function encryptLocalData(plainText: string, userId: string): Promise<{ iv: string; ciphertext: string }> {
+  try {
+    const key = await getOrDeriveAESKey(userId);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const enc = new TextEncoder();
+    const encoded = enc.encode(plainText);
+    
+    const ciphertextBuffer = await crypto.subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv: iv
+      },
+      key,
+      encoded
+    );
+    
+    // Convert to Base64 strings for storage
+    const ivBase64 = btoa(String.fromCharCode(...Array.from(iv)));
+    const ciphertextBase64 = btoa(String.fromCharCode(...new Uint8Array(ciphertextBuffer)));
+    
+    return {
+      iv: ivBase64,
+      ciphertext: ciphertextBase64
+    };
+  } catch (error) {
+    console.error("❌ Erro ao criptografar dados locais com AES-GCM:", error);
+    throw new Error("Falha na criptografia local de dados");
+  }
+}
+
+export async function decryptLocalData(ciphertext: string, iv: string, userId: string): Promise<string> {
+  try {
+    const key = await getOrDeriveAESKey(userId);
+    
+    // Decode base64 strings
+    const ivBytes = new Uint8Array(atob(iv).split("").map(c => c.charCodeAt(0)));
+    const ciphertextBytes = new Uint8Array(atob(ciphertext).split("").map(c => c.charCodeAt(0)));
+    
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: ivBytes
+      },
+      key,
+      ciphertextBytes
+    );
+    
+    const dec = new TextDecoder();
+    return dec.decode(decryptedBuffer);
+  } catch (error) {
+    console.error("❌ Erro ao descriptografar dados locais com AES-GCM:", error);
+    throw new Error("Falha na descriptografia local de dados");
   }
 }

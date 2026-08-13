@@ -3,8 +3,8 @@
 import dynamic from 'next/dynamic';
 
 // ✅ USANDO FORMULÁRIO REFATORADO SEM DEPENDÊNCIA CIRCULAR
-const EmployeeRegistrationFormRefactored = dynamic(
-  () => import('@/components/employee/EmployeeRegistrationFormRefactored'),
+const EmployeeRegistrationForm = dynamic(
+  () => import('@/components/employee/EmployeeRegistrationForm'),
   {
     ssr: false,
     loading: () => (
@@ -19,5 +19,5 @@ const EmployeeRegistrationFormRefactored = dynamic(
 );
 
 export default function CadastroFuncionario() {
-  return <EmployeeRegistrationFormRefactored />;
+  return <EmployeeRegistrationForm />;
 }

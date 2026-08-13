@@ -95,10 +95,9 @@ firebase deploy
 
 ## 🔐 Configuração de Administradores
 
-1. Acesse: https://dbponto-facial.web.app/setup-admin.html
-2. Faça login com sua conta
-3. Insira o email do usuário que deve ser administrador
-4. Clique em "Definir como Administrador"
+Administradores não devem ser promovidos por página pública.
+Use apenas o script interno `functions/scripts/set-claims.mjs` com credenciais
+de operação/IAM autorizadas e registre a alteração na trilha de auditoria.
 
 ## 📚 Documentação
 

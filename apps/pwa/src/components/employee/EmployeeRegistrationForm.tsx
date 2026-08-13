@@ -1,144 +1,28 @@
 'use client';
 
-import { notifyUser } from '@/lib/user-dialogs';
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, addDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { useAuth } from '@/hooks/useAuth';
 
-interface EmployeeFormData {
-  // Dados pessoais básicos
-  nomeCompleto: string;
-  cpf: string;
-  rg: string;
-  orgaoEmissor: string;
-  dataNascimento: string;
-  sexo: 'M' | 'F' | '';
-  estadoCivil: string;
-  nacionalidade: string;
-  naturalidade: string;
-  
-  // Endereço
-  cep: string;
-  endereco: string;
-  numero: string;
-  complemento: string;
-  bairro: string;
-  cidade: string;
-  estado: string;
-  
-  // Contato
-  telefone: string;
-  celular: string;
-  email: string;
-  emailCorporativo: string;
-  
-  // Dados profissionais
-  cargo: string;
-  setor: string;
-  salario: string;
-  dataAdmissao: string;
-  tipoContrato: 'CLT' | 'PJ' | 'Terceirizado' | 'Estagiário' | '';
-  cargaHoraria: string;
-  horarioTrabalho: string;
-  
-  // Dados bancários
-  banco: string;
-  agencia: string;
-  conta: string;
-  tipoConta: 'Corrente' | 'Poupança' | '';
-  
-  // Documentos trabalhistas
-  pisPasep: string;
-  tituloEleitor: string;
-  zonaEleitoral: string;
-  secaoEleitoral: string;
-  reservista: string;
-  carteiraTrabalho: string;
-  serieCtps: string;
-  
-  // Dados familiares/dependentes
-  nomeMae: string;
-  nomePai: string;
-  estadoCivilConjuge?: string;
-  nomeConjuge?: string;
-  cpfConjuge?: string;
-  
-  // Observações
-  observacoes: string;
-}
+// ✅ USAR HOOK PERSONALIZADO - SEM DEPENDÊNCIA CIRCULAR
+import { useEmployeeManagement } from '@/hooks/useEmployeeManagement';
 
-const INITIAL_FORM_DATA: EmployeeFormData = {
-  nomeCompleto: '',
-  cpf: '',
-  rg: '',
-  orgaoEmissor: '',
-  dataNascimento: '',
-  sexo: '',
-  estadoCivil: '',
-  nacionalidade: 'Brasileira',
-  naturalidade: '',
-  
-  cep: '',
-  endereco: '',
-  numero: '',
-  complemento: '',
-  bairro: '',
-  cidade: '',
-  estado: '',
-  
-  telefone: '',
-  celular: '',
-  email: '',
-  emailCorporativo: '',
-  
-  cargo: '',
-  setor: '',
-  salario: '',
-  dataAdmissao: '',
-  tipoContrato: '',
-  cargaHoraria: '40',
-  horarioTrabalho: '08:00 às 17:00',
-  
-  banco: '',
-  agencia: '',
-  conta: '',
-  tipoConta: '',
-  
-  pisPasep: '',
-  tituloEleitor: '',
-  zonaEleitoral: '',
-  secaoEleitoral: '',
-  reservista: '',
-  carteiraTrabalho: '',
-  serieCtps: '',
-  
-  nomeMae: '',
-  nomePai: '',
-  estadoCivilConjuge: '',
-  nomeConjuge: '',
-  cpfConjuge: '',
-  
-  observacoes: '',
-};
-
-// ✅ COMPONENTE FORMFIELD MOVIDO PARA FORA PARA EVITAR PERDA DE FOCO
+// ✅ INTERFACES E TIPOS
 interface FormFieldProps {
   label: string;
-  field: keyof EmployeeFormData;
+  field: string;
   type?: string;
   required?: boolean;
   placeholder?: string;
   options?: Array<{ value: string; label: string }>;
-  formData: EmployeeFormData;
-  errors: Partial<Record<keyof EmployeeFormData, string>>;
-  updateField: (field: keyof EmployeeFormData, value: string) => void;
+  formData: any;
+  errors: Record<string, string>;
+  updateField: (field: string, value: string) => void;
   fetchCEP: (cep: string) => void;
   formatCPF: (value: string) => string;
 }
 
-const FormField: React.FC<FormFieldProps> = ({ 
+// ✅ COMPONENTE FORMFIELD MOVIDO PARA FORA PARA EVITAR PERDA DE FOCO
+const FormField: React.FC<FormFieldProps> = ({
   label, 
   field, 
   type = 'text', 
@@ -156,9 +40,89 @@ const FormField: React.FC<FormFieldProps> = ({
       {label} {required && <span className="text-red-500">*</span>}
     </label>
     
-    {options ? (
+    {type === 'birthday' ? (
+      (() => {
+        const parts = (formData[field] || '').split('-');
+        const currentYear = parts[0] || '';
+        const currentMonth = parts[1] || '';
+        const currentDay = parts[2] || '';
+
+        const updateDate = (y: string, m: string, d: string) => {
+          if (y && m && d) {
+            updateField(field, `${y}-${m}-${d}`);
+          } else {
+            updateField(field, '');
+          }
+        };
+
+        const currentYearNum = new Date().getFullYear();
+        const startYear = currentYearNum - 14; // Idade mínima de 14 anos
+        const endYear = 1920;
+        const yearsList = [];
+        for (let y = startYear; y >= endYear; y--) {
+          yearsList.push(String(y));
+        }
+
+        return (
+          <div className="grid grid-cols-3 gap-2">
+            <select
+              value={currentDay}
+              onChange={(e) => updateDate(currentYear, currentMonth, e.target.value)}
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                errors[field] ? 'border-red-500' : 'border-gray-300'
+              }`}
+            >
+              <option value="">Dia</option>
+              {Array.from({ length: 31 }, (_, i) => {
+                const d = String(i + 1).padStart(2, '0');
+                return <option key={d} value={d}>{d}</option>;
+              })}
+            </select>
+
+            <select
+              value={currentMonth}
+              onChange={(e) => updateDate(currentYear, e.target.value, currentDay)}
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                errors[field] ? 'border-red-500' : 'border-gray-300'
+              }`}
+            >
+              <option value="">Mês</option>
+              {[
+                { value: '01', label: 'Janeiro' },
+                { value: '02', label: 'Fevereiro' },
+                { value: '03', label: 'Março' },
+                { value: '04', label: 'Abril' },
+                { value: '05', label: 'Maio' },
+                { value: '06', label: 'Junho' },
+                { value: '07', label: 'Julho' },
+                { value: '08', label: 'Agosto' },
+                { value: '09', label: 'Setembro' },
+                { value: '10', label: 'Outubro' },
+                { value: '11', label: 'Novembro' },
+                { value: '12', label: 'Dezembro' }
+              ].map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+
+            <select
+              value={currentYear}
+              onChange={(e) => updateDate(e.target.value, currentMonth, currentDay)}
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                errors[field] ? 'border-red-500' : 'border-gray-300'
+              }`}
+            >
+              <option value="">Ano</option>
+              {yearsList.map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+        );
+      })()
+    ) : options ? (
       <select
-        value={formData[field]}
+        value={formData[field] || ''}
         onChange={(e) => updateField(field, e.target.value)}
         className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
           errors[field] ? 'border-red-500' : 'border-gray-300'
@@ -172,7 +136,7 @@ const FormField: React.FC<FormFieldProps> = ({
     ) : (
       <input
         type={type}
-        value={formData[field]}
+        value={formData[field] || ''}
         onChange={(e) => {
           let value = e.target.value;
           
@@ -203,305 +167,119 @@ const FormField: React.FC<FormFieldProps> = ({
 
 export default function EmployeeRegistrationForm() {
   const router = useRouter();
-  const { user } = useAuth();
   
-  const [formData, setFormData] = useState<EmployeeFormData>(INITIAL_FORM_DATA);
+  // ✅ USAR HOOK PERSONALIZADO - SEM DEPENDÊNCIA CIRCULAR
+  const {
+    // Estados
+    formData,
+    isLoading,
+    error,
+    mode,
+    
+    // Ações
+    updateField,
+    formatCPF,
+    fetchCEP,
+    saveEmployee,
+    cancel,
+    
+    // Utilitários
+    validateForm,
+    
+    // Setters
+    setError
+  } = useEmployeeManagement();
+
   const [currentStep, setCurrentStep] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState<Partial<Record<keyof EmployeeFormData | 'general', string>>>({});
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const totalSteps = 6;
 
-  // Validar CPF
-  const validateCPF = (cpf: string): boolean => {
-    const cleanCPF = cpf.replace(/\D/g, '');
-    if (cleanCPF.length !== 11) return false;
-    
-    // Verificar se não é uma sequência igual
-    if (/^(\d)\1+$/.test(cleanCPF)) return false;
-    
-    // Algoritmo de validação do CPF
-    let sum = 0;
-    for (let i = 0; i < 9; i++) {
-      sum += parseInt(cleanCPF[i]) * (10 - i);
-    }
-    let digit = (sum * 10) % 11;
-    if (digit === 10) digit = 0;
-    if (digit !== parseInt(cleanCPF[9])) return false;
-    
-    sum = 0;
-    for (let i = 0; i < 10; i++) {
-      sum += parseInt(cleanCPF[i]) * (11 - i);
-    }
-    digit = (sum * 10) % 11;
-    if (digit === 10) digit = 0;
-    return digit === parseInt(cleanCPF[10]);
-  };
-
-  // Formatar CPF
-  const formatCPF = (value: string): string => {
-    const cleanValue = value.replace(/\D/g, '');
-    return cleanValue
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-  };
-
-  // Buscar CEP
-  const fetchCEP = async (cep: string) => {
-    const cleanCEP = cep.replace(/\D/g, '');
-    if (cleanCEP.length === 8) {
-      try {
-        const response = await fetch(`https://viacep.com.br/ws/${cleanCEP}/json/`);
-        const data = await response.json();
-        
-        if (!data.erro) {
-          setFormData(prev => ({
-            ...prev,
-            endereco: data.logradouro || '',
-            bairro: data.bairro || '',
-            cidade: data.localidade || '',
-            estado: data.uf || '',
-          }));
-        }
-      } catch (error) {
-        console.error('Erro ao buscar CEP:', error);
-      }
-    }
-  };
-
-  // Validar step atual
-  const validateCurrentStep = (): boolean => {
-    const stepErrors: Partial<Record<keyof EmployeeFormData, string>> = {};
-    
-    switch (currentStep) {
-      case 1: // Dados pessoais
-        if (!formData.nomeCompleto.trim()) stepErrors.nomeCompleto = 'Nome completo é obrigatório';
-        if (!formData.cpf) stepErrors.cpf = 'CPF é obrigatório';
-        else if (!validateCPF(formData.cpf)) stepErrors.cpf = 'CPF inválido';
-        if (!formData.rg) stepErrors.rg = 'RG é obrigatório';
-        if (!formData.dataNascimento) stepErrors.dataNascimento = 'Data de nascimento é obrigatória';
-        break;
-        
-      case 2: // Endereço
-        if (!formData.cep) stepErrors.cep = 'CEP é obrigatório';
-        if (!formData.endereco) stepErrors.endereco = 'Endereço é obrigatório';
-        if (!formData.numero) stepErrors.numero = 'Número é obrigatório';
-        if (!formData.cidade) stepErrors.cidade = 'Cidade é obrigatória';
-        if (!formData.estado) stepErrors.estado = 'Estado é obrigatório';
-        break;
-        
-      case 3: // Contato
-        if (!formData.celular) stepErrors.celular = 'Celular é obrigatório';
-        if (!formData.email) stepErrors.email = 'Email é obrigatório';
-        break;
-        
-      case 4: // Dados profissionais
-        if (!formData.cargo) stepErrors.cargo = 'Cargo é obrigatório';
-        if (!formData.setor) stepErrors.setor = 'Setor é obrigatório';
-        if (!formData.dataAdmissao) stepErrors.dataAdmissao = 'Data de admissão é obrigatória';
-        if (!formData.tipoContrato) stepErrors.tipoContrato = 'Tipo de contrato é obrigatório';
-        break;
-        
-      case 5: // Documentos
-        if (!formData.pisPasep) stepErrors.pisPasep = 'PIS/PASEP é obrigatório';
-        if (!formData.carteiraTrabalho) stepErrors.carteiraTrabalho = 'CTPS é obrigatória';
-        break;
-    }
-    
-    setErrors(stepErrors);
-    return Object.keys(stepErrors).length === 0;
-  };
-
-  // Próximo step
-  const handleNextStep = () => {
-    if (validateCurrentStep()) {
-      setCurrentStep(prev => Math.min(prev + 1, totalSteps));
-    }
-  };
-
-  // Step anterior
-  const handlePrevStep = () => {
-    setCurrentStep(prev => Math.max(prev - 1, 1));
-  };
-
-  // Salvar funcionário
-  const handleSubmit = async () => {
-    if (!validateCurrentStep()) {
-      console.log('⚠️ Validação do step falhou');
-      return;
-    }
-    
-    if (!user?.uid) {
-      console.error('❌ Usuário não autenticado');
-      notifyUser('Você precisa estar logado para cadastrar funcionários.');
-      return;
-    }
-    
-    setIsLoading(true);
-    try {
-      console.log('📝 Dados do formulário antes do envio:', formData);
-      
-      // Validar campos obrigatórios críticos
-      const requiredFields = ['nomeCompleto', 'cpf', 'email', 'cargo'];
-      const missingFields = requiredFields.filter(field => !formData[field as keyof EmployeeFormData]);
-      
-      if (missingFields.length > 0) {
-        throw new Error(`Campos obrigatórios não preenchidos: ${missingFields.join(', ')}`);
-      }
-      
-      const employeeData = {
-        // Dados pessoais
-        nomeCompleto: formData.nomeCompleto || '',
-        cpf: formData.cpf?.replace(/\D/g, '') || '', // Apenas números
-        rg: formData.rg || '',
-        orgaoEmissor: formData.orgaoEmissor || '',
-        dataNascimento: formData.dataNascimento || '',
-        sexo: formData.sexo || '',
-        estadoCivil: formData.estadoCivil || '',
-        nacionalidade: formData.nacionalidade || 'Brasileira',
-        naturalidade: formData.naturalidade || '',
-        
-        // Endereço
-        endereco: {
-          cep: formData.cep?.replace(/\D/g, '') || '',
-          logradouro: formData.endereco || '',
-          numero: formData.numero || '',
-          complemento: formData.complemento || '',
-          bairro: formData.bairro || '',
-          cidade: formData.cidade || '',
-          estado: formData.estado || ''
-        },
-        
-        // Contato
-        telefone: formData.telefone?.replace(/\D/g, '') || '',
-        celular: formData.celular?.replace(/\D/g, '') || '',
-        email: formData.email || '',
-        emailCorporativo: formData.emailCorporativo || '',
-        
-        // Dados profissionais
-        cargo: formData.cargo || '',
-        setor: formData.setor || '',
-        salario: parseFloat(formData.salario) || 0,
-        dataAdmissao: formData.dataAdmissao || '',
-        tipoContrato: formData.tipoContrato || 'CLT',
-        cargaHoraria: formData.cargaHoraria || '40',
-        horarioTrabalho: formData.horarioTrabalho || '08:00 às 17:00',
-        
-        // Dados bancários
-        dadosBancarios: {
-          banco: formData.banco || '',
-          agencia: formData.agencia || '',
-          conta: formData.conta || '',
-          tipoConta: formData.tipoConta || ''
-        },
-        
-        // Documentos
-        documentos: {
-          pisPasep: formData.pisPasep || '',
-          tituloEleitor: formData.tituloEleitor || '',
-          zonaEleitoral: formData.zonaEleitoral || '',
-          secaoEleitoral: formData.secaoEleitoral || '',
-          reservista: formData.reservista || '',
-          carteiraTrabalho: formData.carteiraTrabalho || '',
-          serieCtps: formData.serieCtps || ''
-        },
-        
-        // Dados familiares
-        dadosFamiliares: {
-          nomeMae: formData.nomeMae || '',
-          nomePai: formData.nomePai || '',
-          nomeConjuge: formData.nomeConjuge || '',
-          cpfConjuge: formData.cpfConjuge || ''
-        },
-        
-        // Observações
-        observacoes: formData.observacoes || '',
-        
-        // Metadados
-        createdBy: user.uid,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        status: 'pending_facial_registration',
-        registrationCompleted: false,
-        active: true
-      };
-      
-      console.log('📤 Enviando dados estruturados:', employeeData);
-      
-      const docRef = await addDoc(collection(db, 'employees'), employeeData);
-      console.log('✅ Funcionário cadastrado com sucesso:', docRef.id);
-      
-      // Redirecionar para cadastro facial
-      router.push(`/app/cadastro-facial?employeeId=${docRef.id}`);
-      
-    } catch (error: any) {
-      console.error('❌ Erro detalhado ao salvar funcionário:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        stack: error.stack,
-        formData: formData
-      });
-      
-      let errorMessage = 'Erro desconhecido ao salvar funcionário.';
-      
-      if (error.code === 'permission-denied') {
-        errorMessage = 'Você não tem permissão para cadastrar funcionários.';
-      } else if (error.code === 'network-request-failed') {
-        errorMessage = 'Erro de conexão. Verifique sua internet e tente novamente.';
-      } else if (error.message) {
-        errorMessage = `Erro: ${error.message}`;
-      }
-      
-      setErrors(prev => ({
-        ...prev,
-        general: errorMessage
-      }));
-      
-      notifyUser(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Atualizar campo
-  const updateField = (field: keyof EmployeeFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // Limpar erro do campo
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
-  };
-
-  // ✅ FUNÇÃO AUXILIAR PARA SIMPLIFICAR FormField
+  // ✅ HELPER PARA RENDERIZAR CAMPOS
   const renderFormField = (
-    label: string,
-    field: keyof EmployeeFormData,
-    options?: {
-      type?: string;
-      required?: boolean;
+    label: string, 
+    field: string, 
+    options: { 
+      type?: string; 
+      required?: boolean; 
       placeholder?: string;
       options?: Array<{ value: string; label: string }>;
-    }
+    } = {}
   ) => (
     <FormField
+      key={field}
       label={label}
       field={field}
-      type={options?.type}
-      required={options?.required}
-      placeholder={options?.placeholder}
-      options={options?.options}
+      type={options.type}
+      required={options.required}
+      placeholder={options.placeholder}
+      options={options.options}
       formData={formData}
-      errors={errors}
-      updateField={updateField}
+      errors={validationErrors}
+      updateField={(field, value) => updateField(field as Parameters<typeof updateField>[0], value)}
       fetchCEP={fetchCEP}
       formatCPF={formatCPF}
     />
   );
 
+  // ✅ VALIDAR STEP ATUAL
+  const validateCurrentStep = (): boolean => {
+    const validation = validateForm();
+    setValidationErrors(validation.errors);
+    
+    // Validações específicas por step
+    switch (currentStep) {
+      case 1:
+        return !validation.errors.nomeCompleto && !validation.errors.cpf && !validation.errors.rg && !validation.errors.dataNascimento;
+      case 2:
+        return !validation.errors.cep && !validation.errors.endereco && !validation.errors.cidade;
+      case 3:
+        return !validation.errors.celular && !validation.errors.email;
+      case 4:
+        return !validation.errors.cargo && !validation.errors.setor && !validation.errors.dataAdmissao;
+      case 5:
+        return true; // Dados bancários opcionais
+      case 6:
+        return true; // Documentos e familiares opcionais
+      default:
+        return true;
+    }
+  };
 
+  // ✅ AVANÇAR STEP
+  const nextStep = () => {
+    if (validateCurrentStep()) {
+      setCurrentStep(prev => Math.min(prev + 1, totalSteps));
+      setError(''); // Limpar erro geral
+    }
+  };
+
+  // ✅ VOLTAR STEP
+  const prevStep = () => {
+    setCurrentStep(prev => Math.max(prev - 1, 1));
+    setError(''); // Limpar erro geral
+  };
+
+  // ✅ FINALIZAR FORMULÁRIO
+  const handleSubmit = async () => {
+    const validation = validateForm();
+    if (!validation.isValid) {
+      setValidationErrors(validation.errors);
+      setError('Por favor, corrija os erros nos campos obrigatórios');
+      return;
+    }
+
+    const result = await saveEmployee();
+    
+    if (result.success && result.employeeId && result.shouldProceedToFacialRegistration) {
+      // Redirecionar para cadastro facial
+      router.push(`/app/cadastro-facial?employeeId=${result.employeeId}`);
+    } else if (result.success) {
+      router.push('/admin/funcionarios');
+    }
+  };
+
+  // ✅ RENDERIZAR CONTEÚDO DO STEP
   const renderStep = () => {
     switch (currentStep) {
       case 1:
@@ -514,7 +292,7 @@ export default function EmployeeRegistrationForm() {
               {renderFormField("CPF", "cpf", { required: true, placeholder: "000.000.000-00" })}
               {renderFormField("RG", "rg", { required: true })}
               {renderFormField("Órgão Emissor", "orgaoEmissor", { placeholder: "SSP, DETRAN, etc." })}
-              {renderFormField("Data de Nascimento", "dataNascimento", { type: "date", required: true })}
+              {renderFormField("Data de Nascimento", "dataNascimento", { type: "birthday", required: true })}
               {renderFormField("Sexo", "sexo", { 
                 options: [
                   { value: 'M', label: 'Masculino' },
@@ -541,13 +319,13 @@ export default function EmployeeRegistrationForm() {
             <h3 className="text-lg font-semibold text-gray-800">Endereço</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {renderFormField("CEP", "cep", { required: true, placeholder: "00000-000" })}
+              {renderFormField("CEP", "cep", { placeholder: "00000-000" })}
               {renderFormField("Endereço", "endereco", { required: true })}
               {renderFormField("Número", "numero", { required: true })}
-              {renderFormField("Complemento", "complemento", { placeholder: "Apt, Bloco, etc." })}
-              {renderFormField("Bairro", "bairro")}
+              {renderFormField("Complemento", "complemento", { placeholder: "Apto, Sala, etc." })}
+              {renderFormField("Bairro", "bairro", { required: true })}
               {renderFormField("Cidade", "cidade", { required: true })}
-              {renderFormField("Estado", "estado", { required: true })}
+              {renderFormField("Estado", "estado", { placeholder: "UF" })}
             </div>
           </div>
         );
@@ -558,8 +336,8 @@ export default function EmployeeRegistrationForm() {
             <h3 className="text-lg font-semibold text-gray-800">Contato</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {renderFormField("Telefone Fixo", "telefone", { placeholder: "(11) 0000-0000" })}
-              {renderFormField("Celular", "celular", { required: true, placeholder: "(11) 90000-0000" })}
+              {renderFormField("Telefone", "telefone", { placeholder: "(00) 0000-0000" })}
+              {renderFormField("Celular", "celular", { required: true, placeholder: "(00) 00000-0000" })}
               {renderFormField("Email Pessoal", "email", { type: "email", required: true })}
               {renderFormField("Email Corporativo", "emailCorporativo", { type: "email" })}
             </div>
@@ -574,10 +352,9 @@ export default function EmployeeRegistrationForm() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {renderFormField("Cargo", "cargo", { required: true })}
               {renderFormField("Setor", "setor", { required: true })}
-              {renderFormField("Salário", "salario", { placeholder: "R$ 0,00" })}
+              {renderFormField("Salário", "salario", { type: "number", placeholder: "0.00" })}
               {renderFormField("Data de Admissão", "dataAdmissao", { type: "date", required: true })}
               {renderFormField("Tipo de Contrato", "tipoContrato", {
-                required: true,
                 options: [
                   { value: 'CLT', label: 'CLT' },
                   { value: 'PJ', label: 'Pessoa Jurídica' },
@@ -585,7 +362,7 @@ export default function EmployeeRegistrationForm() {
                   { value: 'Estagiário', label: 'Estagiário' }
                 ]
               })}
-              {renderFormField("Carga Horária", "cargaHoraria", { placeholder: "40h/semana" })}
+              {renderFormField("Carga Horária", "cargaHoraria", { placeholder: "40h" })}
               {renderFormField("Horário de Trabalho", "horarioTrabalho", { placeholder: "08:00 às 17:00" })}
             </div>
           </div>
@@ -594,19 +371,8 @@ export default function EmployeeRegistrationForm() {
       case 5:
         return (
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-800">Documentos Trabalhistas</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Dados Bancários</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {renderFormField("PIS/PASEP", "pisPasep", { required: true })}
-              {renderFormField("Título de Eleitor", "tituloEleitor")}
-              {renderFormField("Zona Eleitoral", "zonaEleitoral")}
-              {renderFormField("Seção Eleitoral", "secaoEleitoral")}
-              {renderFormField("Reservista", "reservista")}
-              {renderFormField("CTPS", "carteiraTrabalho", { required: true })}
-              {renderFormField("Série CTPS", "serieCtps")}
-            </div>
-            
-            <h4 className="text-md font-semibold text-gray-800 mt-6">Dados Bancários</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {renderFormField("Banco", "banco")}
               {renderFormField("Agência", "agencia")}
@@ -624,30 +390,32 @@ export default function EmployeeRegistrationForm() {
       case 6:
         return (
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-800">Dados Familiares e Observações</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Documentos e Dados Familiares</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {renderFormField("PIS/PASEP", "pisPasep")}
+              {renderFormField("Título de Eleitor", "tituloEleitor")}
+              {renderFormField("Zona Eleitoral", "zonaEleitoral")}
+              {renderFormField("Seção Eleitoral", "secaoEleitoral")}
+              {renderFormField("Reservista", "reservista")}
+              {renderFormField("Carteira de Trabalho", "carteiraTrabalho")}
+              {renderFormField("Série CTPS", "serieCtps")}
               {renderFormField("Nome da Mãe", "nomeMae")}
               {renderFormField("Nome do Pai", "nomePai")}
-              
-              {formData.estadoCivil === 'Casado(a)' && (
-                <>
-                  {renderFormField("Nome do Cônjuge", "nomeConjuge")}
-                  {renderFormField("CPF do Cônjuge", "cpfConjuge")}
-                </>
-              )}
+              {renderFormField("Nome do Cônjuge", "nomeConjuge")}
+              {renderFormField("CPF do Cônjuge", "cpfConjuge")}
             </div>
             
-            <div>
+            <div className="col-span-full">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Observações
               </label>
               <textarea
-                value={formData.observacoes}
+                value={formData.observacoes || ''}
                 onChange={(e) => updateField('observacoes', e.target.value)}
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Informações adicionais relevantes..."
+                placeholder="Observações gerais sobre o funcionário..."
               />
             </div>
           </div>
@@ -659,79 +427,106 @@ export default function EmployeeRegistrationForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl">
+        
         {/* Header */}
-        <div className="bg-white rounded-t-2xl shadow-lg p-6">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">
-              👤 Cadastro de Funcionário
-            </h1>
-            <div className="text-sm text-gray-600">
-              Passo {currentStep} de {totalSteps}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 rounded-t-2xl">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold">
+                {mode === 'edit' ? 'Editar Funcionário' : 'Cadastro de Funcionário'}
+              </h1>
+              <p className="text-blue-100">
+                {mode === 'edit' ? 
+                  'Atualize os dados do funcionário' : 
+                  'Preencha as informações para cadastrar o funcionário'
+                }
+              </p>
             </div>
+            {mode === 'edit' && (
+              <div className="bg-green-500 px-3 py-1 rounded-full text-sm font-medium">
+                Modo Edição
+              </div>
+            )}
           </div>
           
-          {/* Progress bar */}
-          <div className="mt-4 bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Erro geral */}
-        {errors.general && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
-            <div className="flex">
-              <div className="text-red-400 text-xl mr-3">⚠️</div>
-              <div>
-                <h3 className="text-sm font-medium text-red-800">Erro no cadastro</h3>
-                <p className="text-sm text-red-700 mt-1">{errors.general}</p>
-              </div>
+          {/* Progress Bar */}
+          <div className="mt-4">
+            <div className="flex justify-between mb-2">
+              <span className="text-sm text-blue-100">Etapa {currentStep} de {totalSteps}</span>
+              <span className="text-sm text-blue-100">{Math.round((currentStep / totalSteps) * 100)}%</span>
+            </div>
+            <div className="w-full bg-blue-500/30 rounded-full h-2">
+              <div
+                className="bg-white rounded-full h-2 transition-all duration-300"
+                style={{ width: `${(currentStep / totalSteps) * 100}%` }}
+              ></div>
             </div>
           </div>
-        )}
-
-        {/* Form */}
-        <div className="bg-white shadow-lg p-6">
-          {renderStep()}
         </div>
 
-        {/* Footer */}
-        <div className="bg-white rounded-b-2xl shadow-lg p-6 flex justify-between">
-          <button
-            onClick={handlePrevStep}
-            disabled={currentStep === 1}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            ← Anterior
-          </button>
-
-          {currentStep < totalSteps ? (
-            <button
-              onClick={handleNextStep}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Próximo →
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={isLoading}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center"
-            >
-              {isLoading ? (
-                <>
-                  <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                  Salvando...
-                </>
-              ) : (
-                '✅ Finalizar Cadastro'
-              )}
-            </button>
+        {/* Form Content */}
+        <div className="p-6">
+          {/* Erro geral */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <p className="text-red-800 font-medium">❌ {error}</p>
+            </div>
           )}
+
+          {/* Step Content */}
+          {renderStep()}
+
+          {/* Navigation Buttons */}
+          <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={currentStep === 1 ? cancel : prevStep}
+              className="flex items-center px-6 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              {currentStep === 1 ? '❌ Cancelar' : '⬅️ Anterior'}
+            </button>
+
+            <div className="flex space-x-2">
+              {Array.from({ length: totalSteps }).map((_, index) => (
+                <div
+                  key={index}
+                  className={`w-3 h-3 rounded-full ${
+                    index + 1 <= currentStep ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {currentStep < totalSteps ? (
+              <button
+                type="button"
+                onClick={nextStep}
+                className="flex items-center px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Próxima ➡️
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isLoading}
+                className="flex items-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    {mode === 'edit' ? '💾 Atualizar Funcionário' : '💾 Cadastrar e Prosseguir'}
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -289,22 +289,22 @@ export default function CollapsibleSidebar({
       {/* ✅ HEADER MOBILE */}
       {isMobile && (
         <header className="mobile-header">
-          <button
-            onClick={toggleMobile}
-            className={`mobile-menu-btn ${isMobileOpen ? 'mobile-menu-btn--open' : ''}`}
-            aria-label={isMobileOpen ? 'Fechar menu' : 'Abrir menu'}
-            aria-expanded={isMobileOpen}
-            type="button"
-          >
-            {isMobileOpen ? '✕' : '☰'}
-          </button>
-          
-          <Link href={logo.href || '/'} className="sidebar-logo">
-            <span className="sidebar-logo-icon">{logo.icon}</span>
-            <span className="sidebar-logo-text">{logo.text}</span>
-          </Link>
-          
-          <div style={{ width: '2.5rem' }} /> {/* Spacer para centralizar logo */}
+          <div className="mobile-header-left">
+            <button
+              onClick={toggleMobile}
+              className={`mobile-menu-btn ${isMobileOpen ? 'mobile-menu-btn--open' : ''}`}
+              aria-label={isMobileOpen ? 'Fechar menu' : 'Abrir menu'}
+              aria-expanded={isMobileOpen}
+              type="button"
+            >
+              {isMobileOpen ? '✕' : '☰'}
+            </button>
+            
+            <Link href={logo.href || '/'} className="sidebar-logo">
+              <span className="sidebar-logo-icon">{logo.icon}</span>
+              <span className="sidebar-logo-text">{logo.text}</span>
+            </Link>
+          </div>
         </header>
       )}
 

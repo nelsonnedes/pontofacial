@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import consoleOptimizer from '../lib/console-optimizer'
 
 /**
  * Console Optimizer Client Component
@@ -8,18 +9,7 @@ import { useEffect } from 'react'
  */
 export default function ConsoleOptimizerClient() {
   useEffect(() => {
-    // Só ativar em desenvolvimento
-    if (process.env.NODE_ENV !== 'development') {
-      return
-    }
-
-    // Importar e ativar o console optimizer dinamicamente
-    import('../lib/console-optimizer').then((_module) => {
-      // O optimizer é inicializado automaticamente na importação
-      console.log('🎛️ Console Optimizer Client ativado via componente')
-    }).catch((error) => {
-      console.warn('⚠️ Erro ao carregar Console Optimizer:', error)
-    })
+    consoleOptimizer.initialize()
   }, [])
 
   // Este componente não renderiza nada

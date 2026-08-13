@@ -52,10 +52,10 @@ export const BIOMETRIC_POLICY = {
     readPublicEnv('NEXT_PUBLIC_BIOMETRIC_ENGINE') ||
     'legacy-client'
   ).toLowerCase(),
-  minSimilarity: readNumberEnv('NEXT_PUBLIC_BIOMETRIC_MIN_SIMILARITY', 0.75),
+  minSimilarity: readNumberEnv('NEXT_PUBLIC_BIOMETRIC_MIN_SIMILARITY', 0.82),
   minConfidence: readNumberEnv('NEXT_PUBLIC_BIOMETRIC_MIN_CONFIDENCE', 0.85),
   minCandidateMargin: readNumberEnv('NEXT_PUBLIC_BIOMETRIC_MIN_CANDIDATE_MARGIN', 0.15),
-  reviewSimilarity: readNumberEnv('NEXT_PUBLIC_BIOMETRIC_REVIEW_SIMILARITY', 0.65),
+  reviewSimilarity: readNumberEnv('NEXT_PUBLIC_BIOMETRIC_REVIEW_SIMILARITY', 0.72),
   livenessRequired: readBooleanEnv('NEXT_PUBLIC_BIOMETRIC_LIVENESS_REQUIRED', true),
   allowManualLiveness: readBooleanEnv('NEXT_PUBLIC_ALLOW_MANUAL_LIVENESS', false),
   allowDemoBiometrics: readBooleanEnv('NEXT_PUBLIC_ALLOW_BIOMETRIC_DEMO', false),

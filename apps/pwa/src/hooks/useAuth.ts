@@ -5,6 +5,16 @@ import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 
+const authDebugEnabled =
+  process.env.NODE_ENV === 'development' &&
+  process.env.NEXT_PUBLIC_VERBOSE_FIREBASE_LOGS === 'true';
+
+function logAuthDebug(...args: unknown[]): void {
+  if (authDebugEnabled) {
+    console.debug('[auth]', ...args);
+  }
+}
+
 // Função para garantir que o documento do usuário existe no Firestore
 async function ensureUserDocument(user: User) {
   try {
@@ -13,7 +23,7 @@ async function ensureUserDocument(user: User) {
     
     if (!userDoc.exists()) {
       // Criar documento base para o usuário
-      console.log('📝 Criando documento base para usuário:', user.email);
+      logAuthDebug('Criando documento base para usuário:', user.email);
       await setDoc(userRef, {
         email: user.email,
         name: user.displayName || user.email?.split('@')[0] || 'Usuário',
@@ -26,9 +36,9 @@ async function ensureUserDocument(user: User) {
         faceLastVerified: null,
         faceVerificationCount: 0
       });
-      console.log('✅ Documento do usuário criado com sucesso');
+      logAuthDebug('Documento do usuário criado com sucesso');
     } else {
-      console.log('✅ Documento do usuário já existe');
+      logAuthDebug('Documento do usuário já existe');
     }
   } catch (error) {
     console.error('❌ Erro ao criar/verificar documento do usuário:', error);
@@ -60,12 +70,12 @@ class AuthManager {
     if (this.isInitialized) return;
     this.isInitialized = true;
 
-    console.log('🔐 Inicializando AuthManager singleton');
+    logAuthDebug('Inicializando AuthManager singleton');
     
     this.unsubscribe = onAuthStateChanged(
       auth,
       async (currentUser) => {
-        console.log('🔐 Auth state changed:', currentUser ? 'logged in' : 'logged out');
+        logAuthDebug('Auth state changed:', currentUser ? 'logged in' : 'logged out');
         this.user = currentUser;
         
         // Se o usuário logou, garantir que o documento existe no Firestore

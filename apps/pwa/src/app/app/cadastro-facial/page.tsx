@@ -28,7 +28,7 @@ export default function CadastroFacial() {
         // Aguardar 100ms para garantir que todos os singletons estejam prontos
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        const facialRegistrationModule = await import('@/components/facial-registration/FacialRegistrationRefactored');
+        const facialRegistrationModule = await import('@/components/facial-registration/FacialRegistration');
         console.log('✅ Componente de cadastro facial carregado com sucesso');
         
         setComponent(() => facialRegistrationModule.default);

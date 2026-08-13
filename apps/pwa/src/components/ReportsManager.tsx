@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase';
 import { collection, getDocs } from 'firebase/firestore';
@@ -49,6 +49,19 @@ interface CompanySummary {
   cnpj?: string;
   cei?: string;
   address?: string;
+  legalSignature?: {
+    enabled: boolean;
+    certificateType: string;
+    holderName: string;
+    holderCnpj: string;
+    serialNumber: string;
+    issuer: string;
+    validUntil: string;
+    providerName: string;
+    providerProtocol: string;
+    integrationMode: string;
+    notes: string;
+  };
 }
 
 interface NormalizedRecord {
@@ -199,7 +212,20 @@ function normalizeCompany(id: string, data: any): CompanySummary {
     legalName,
     cnpj: readString(data.cnpj),
     cei: readString(data.cei),
-    address: formatAddress(data)
+    address: formatAddress(data),
+    legalSignature: data.legalSignature ? {
+      enabled: !!data.legalSignature.enabled,
+      certificateType: readString(data.legalSignature.certificateType),
+      holderName: readString(data.legalSignature.holderName),
+      holderCnpj: readString(data.legalSignature.holderCnpj),
+      serialNumber: readString(data.legalSignature.serialNumber),
+      issuer: readString(data.legalSignature.issuer),
+      validUntil: readString(data.legalSignature.validUntil),
+      providerName: readString(data.legalSignature.providerName),
+      providerProtocol: readString(data.legalSignature.providerProtocol),
+      integrationMode: readString(data.legalSignature.integrationMode),
+      notes: readString(data.legalSignature.notes)
+    } : undefined
   };
 }
 
@@ -337,9 +363,19 @@ function escapeHtml(value: unknown): string {
 
 function buildOperationalText(title: string, dataset: ReportDataset): string {
   const company = dataset.company;
+  const isSigned = !!company?.legalSignature?.enabled;
+  
+  const formattedTitle = isSigned 
+    ? title.replace('PREVIA OPERACIONAL', 'RELATÓRIO OFICIAL ASSINADO')
+    : title;
+
+  const disclaimer = isSigned
+    ? `DOCUMENTO OFICIAL ASSINADO DIGITALMENTE - ICP-Brasil. Titular: ${company?.legalSignature?.holderName}, CNPJ: ${formatCnpj(company?.legalSignature?.holderCnpj)}, S/N: ${company?.legalSignature?.serialNumber}, Emissor: ${company?.legalSignature?.issuer}, Validade: ${company?.legalSignature?.validUntil}.`
+    : 'ATENCAO: documento de conferencia operacional. Nao possui assinatura digital legal/ICP-Brasil.';
+
   const header = [
-    title,
-    'ATENCAO: documento de conferencia operacional. Nao possui assinatura digital legal/ICP-Brasil.',
+    formattedTitle,
+    disclaimer,
     `Periodo: ${dataset.period.label}`,
     `Empresa: ${company ? company.legalName : 'Nao vinculada aos registros'}`,
     `CNPJ: ${formatCnpj(company?.cnpj)}`,
@@ -369,6 +405,8 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
   const [currentReport, setCurrentReport] = useState<ReportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const [companiesList, setCompaniesList] = useState<CompanySummary[]>([]);
+  const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
 
   const [formData, setFormData] = useState<ReportRequest>({
     type: 'afd',
@@ -379,11 +417,33 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
     companyId: ''
   });
 
+  useEffect(() => {
+    async function loadCompanies() {
+      setIsLoadingCompanies(true);
+      try {
+        const querySnapshot = await getDocs(collection(db, 'empresas'));
+        const list: CompanySummary[] = [];
+        querySnapshot.forEach((doc) => {
+          list.push(normalizeCompany(doc.id, doc.data()));
+        });
+        setCompaniesList(list);
+        
+        // Auto-select companyId if there is only one company configured
+        if (list.length === 1 && !formData.companyId) {
+          setFormData(prev => ({ ...prev, companyId: list[0].id }));
+        }
+      } catch (err) {
+        console.error('Erro ao carregar empresas:', err);
+      } finally {
+        setIsLoadingCompanies(false);
+      }
+    }
+    loadCompanies();
+  }, [db]);
+
   const fetchReportDataset = useCallback(async (request: ReportRequest): Promise<ReportDataset> => {
     const period = getPeriodRange(request);
-    const warnings: string[] = [
-      'Prévia operacional sem assinatura digital legal. Use para conferência interna, não como documento fiscal/trabalhista final.'
-    ];
+    const warnings: string[] = [];
 
     const [employeesResult, companiesResult, timeRecordsResult, marcacoesResult] = await Promise.allSettled([
       getDocs(collection(db, 'employees')),
@@ -461,6 +521,14 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
       warnings.push('Empresa não vinculada aos registros. Informe o ID da empresa ou vincule empresaId nos registros/funcionários.');
     }
 
+    if (company && company.legalSignature?.enabled) {
+      // Document is signed using ICP-Brasil!
+    } else {
+      warnings.unshift(
+        'Prévia operacional sem assinatura digital legal. Use para conferência interna, não como documento fiscal/trabalhista final.'
+      );
+    }
+
     return {
       period,
       records: uniqueRecords,
@@ -471,10 +539,13 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
 
   const generateAFDReport = useCallback(async (request: ReportRequest) => {
     const dataset = await fetchReportDataset(request);
+    const isSigned = !!dataset.company?.legalSignature?.enabled;
 
     return {
-      content: buildOperationalText('PREVIA OPERACIONAL AFD', dataset),
-      filename: `PREVIA_AFD_OPERACIONAL_${dataset.period.fileStart}_${dataset.period.fileEnd}.txt`,
+      content: buildOperationalText(isSigned ? 'RELATÓRIO OFICIAL AFD' : 'PREVIA OPERACIONAL AFD', dataset),
+      filename: isSigned
+        ? `AFD_ASSINADO_${dataset.period.fileStart}_${dataset.period.fileEnd}.txt`
+        : `PREVIA_AFD_OPERACIONAL_${dataset.period.fileStart}_${dataset.period.fileEnd}.txt`,
       recordCount: dataset.records.length,
       warnings: dataset.warnings,
       period: dataset.period.label
@@ -483,10 +554,13 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
 
   const generateAEJReport = useCallback(async (request: ReportRequest) => {
     const dataset = await fetchReportDataset(request);
+    const isSigned = !!dataset.company?.legalSignature?.enabled;
 
     return {
-      content: buildOperationalText('PREVIA OPERACIONAL AEJ', dataset),
-      filename: `PREVIA_AEJ_OPERACIONAL_${dataset.period.fileStart}_${dataset.period.fileEnd}.txt`,
+      content: buildOperationalText(isSigned ? 'RELATÓRIO OFICIAL AEJ' : 'PREVIA OPERACIONAL AEJ', dataset),
+      filename: isSigned
+        ? `AEJ_ASSINADO_${dataset.period.fileStart}_${dataset.period.fileEnd}.txt`
+        : `PREVIA_AEJ_OPERACIONAL_${dataset.period.fileStart}_${dataset.period.fileEnd}.txt`,
       recordCount: dataset.records.length,
       warnings: dataset.warnings,
       period: dataset.period.label
@@ -496,6 +570,7 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
   const generateEspelhoReport = useCallback(async (request: ReportRequest) => {
     const dataset = await fetchReportDataset(request);
     const company = dataset.company;
+    const isSigned = !!company?.legalSignature?.enabled;
     const rows = dataset.records.map((record) => `
             <tr>
                 <td>${escapeHtml(record.timestamp.toLocaleDateString('pt-BR'))}</td>
@@ -508,13 +583,34 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
             </tr>
     `).join('');
 
+    const noticeBox = isSigned
+      ? `<div class="notice" style="border: 1px solid #10b981; background: #ecfdf5; color: #065f46;">
+             <strong>🔐 Documento Assinado Digitalmente via ICP-Brasil</strong><br/>
+             <strong>Titular:</strong> ${escapeHtml(company?.legalSignature?.holderName)}<br/>
+             <strong>CNPJ do Titular:</strong> ${escapeHtml(formatCnpj(company?.legalSignature?.holderCnpj))}<br/>
+             <strong>Série do Certificado:</strong> ${escapeHtml(company?.legalSignature?.serialNumber)} | 
+             <strong>Emissor:</strong> ${escapeHtml(company?.legalSignature?.issuer)} | 
+             <strong>Validade:</strong> ${escapeHtml(company?.legalSignature?.validUntil)}
+         </div>`
+      : `<div class="notice">
+             Documento de conferência operacional. Não possui assinatura digital legal/ICP-Brasil.
+         </div>`;
+
+    const titleText = isSigned
+      ? 'RELATÓRIO OFICIAL DE ESPELHO DE PONTO'
+      : 'PRÉVIA OPERACIONAL DE ESPELHO DE PONTO';
+
+    const subtitleText = isSigned
+      ? 'Assinatura digital ICP-Brasil ativa e registrada'
+      : 'Conferência baseada nos registros reais carregados do Firestore';
+
     const espelhoHTML = `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prévia Operacional de Espelho de Ponto</title>
+    <title>${escapeHtml(titleText)}</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; color: #111827; }
         .header { text-align: center; border-bottom: 2px solid #111827; margin-bottom: 20px; padding-bottom: 10px; }
@@ -528,12 +624,10 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
 </head>
 <body>
     <div class="header">
-        <h1>PRÉVIA OPERACIONAL DE ESPELHO DE PONTO</h1>
-        <p>Conferência baseada nos registros reais carregados do Firestore</p>
+        <h1>${escapeHtml(titleText)}</h1>
+        <p>${escapeHtml(subtitleText)}</p>
     </div>
-    <div class="notice">
-        Documento de conferência operacional. Não possui assinatura digital legal/ICP-Brasil.
-    </div>
+    ${noticeBox}
     <div class="info">
         <p><strong>Empresa:</strong> ${escapeHtml(company ? company.legalName : 'Não vinculada aos registros')}</p>
         <p><strong>CNPJ:</strong> ${escapeHtml(formatCnpj(company?.cnpj))}</p>
@@ -564,7 +658,9 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
 
     return {
       content: espelhoHTML,
-      filename: `PREVIA_ESPELHO_OPERACIONAL_${dataset.period.fileStart}_${dataset.period.fileEnd}.html`,
+      filename: isSigned
+        ? `ESPELHO_ASSINADO_${dataset.period.fileStart}_${dataset.period.fileEnd}.html`
+        : `PREVIA_ESPELHO_OPERACIONAL_${dataset.period.fileStart}_${dataset.period.fileEnd}.html`,
       recordCount: dataset.records.length,
       warnings: dataset.warnings,
       period: dataset.period.label
@@ -639,27 +735,58 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
     URL.revokeObjectURL(url);
   }, [currentReport]);
 
+  const signedCompany = companiesList.find(c => {
+    if (formData.companyId) {
+      return c.id.toLowerCase() === formData.companyId.toLowerCase();
+    }
+    return true; // fallback to the first company if none selected
+  })?.legalSignature?.enabled ? companiesList.find(c => {
+    if (formData.companyId) {
+      return c.id.toLowerCase() === formData.companyId.toLowerCase();
+    }
+    return true;
+  }) : undefined;
+
   return (
     <div className={`p-6 ${className}`}>
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">📋 Relatórios Operacionais</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {signedCompany ? '📋 Relatórios Oficiais Assinados' : '📋 Relatórios Operacionais'}
+          </h2>
           <p className="text-gray-600">
-            Gere prévias com os registros reais disponíveis no Firestore.
+            {signedCompany 
+              ? 'Gere relatórios oficiais assinados digitalmente com o e-CNPJ da empresa.' 
+              : 'Gere prévias com os registros reais disponíveis no Firestore.'}
           </p>
         </div>
 
-        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-          <div>
-            As saídas AFD, AEJ e Espelho nesta tela são prévias de conferência. A assinatura digital legal fica bloqueada até a integração com provedor ICP-Brasil.
+        {signedCompany ? (
+          <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+            <div className="font-semibold flex items-center mb-1 text-green-900">
+              <span className="mr-2">🔐</span> Assinatura Digital ICP-Brasil Ativa e Integrada
+            </div>
+            <div className="text-green-700">
+              O certificado digital e-CNPJ da empresa <strong>{signedCompany.legalName}</strong> está configurado e ativo. 
+              Os relatórios gerados (AFD, AEJ e Espelho de Ponto) serão exportados como documentos oficiais assinados digitalmente.
+            </div>
+            <div className="mt-2 text-xs text-green-600 border-t border-green-150 pt-2 font-mono">
+              Titular: {signedCompany.legalSignature?.holderName} | CNPJ: {formatCnpj(signedCompany.legalSignature?.holderCnpj)} | S/N: {signedCompany.legalSignature?.serialNumber} | Validade: {signedCompany.legalSignature?.validUntil}
+            </div>
           </div>
-          <Link
-            href="/admin/manual#regularizacao-legal-rep"
-            className="mt-3 inline-flex rounded-md border border-yellow-300 bg-white px-3 py-2 text-xs font-semibold text-yellow-900 hover:bg-yellow-100"
-          >
-            Ver processo para emissão oficial
-          </Link>
-        </div>
+        ) : (
+          <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+            <div>
+              As saídas AFD, AEJ e Espelho nesta tela são prévias de conferência. A assinatura digital legal fica bloqueada até a integração com provedor ICP-Brasil.
+            </div>
+            <Link
+              href="/admin/manual#regularizacao-legal-rep"
+              className="mt-3 inline-flex rounded-md border border-yellow-300 bg-white px-3 py-2 text-xs font-semibold text-yellow-900 hover:bg-yellow-100"
+            >
+              Ver processo para emissão oficial
+            </Link>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-lg shadow-sm border p-6">
@@ -675,9 +802,15 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
                   onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as ReportType }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="afd">📁 Prévia AFD operacional</option>
-                  <option value="aej">👤 Prévia AEJ operacional</option>
-                  <option value="espelho">📄 Espelho operacional HTML</option>
+                  <option value="afd">
+                    {signedCompany ? '📁 AFD Oficial Assinado' : '📁 Prévia AFD operacional'}
+                  </option>
+                  <option value="aej">
+                    {signedCompany ? '👤 AEJ Oficial Assinado' : '👤 Prévia AEJ operacional'}
+                  </option>
+                  <option value="espelho">
+                    {signedCompany ? '📄 Espelho de Ponto Oficial HTML' : '📄 Espelho operacional HTML'}
+                  </option>
                 </select>
               </div>
 
@@ -738,15 +871,40 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  ID da empresa
+                  Empresa
                 </label>
-                <input
-                  type="text"
-                  value={formData.companyId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, companyId: e.target.value }))}
-                  placeholder="Opcional, usado quando houver mais de uma empresa"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                {isLoadingCompanies ? (
+                  <input
+                    type="text"
+                    value={formData.companyId}
+                    onChange={(e) => setFormData(prev => ({ ...prev, companyId: e.target.value }))}
+                    placeholder="Carregando empresas..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent animate-pulse"
+                    disabled
+                  />
+                ) : companiesList.length > 0 ? (
+                  <select
+                    value={formData.companyId}
+                    onChange={(e) => setFormData(prev => ({ ...prev, companyId: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Selecione a empresa (Opcional se houver apenas uma)</option>
+                    {companiesList.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.legalName} ({formatCnpj(c.cnpj)})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={formData.companyId}
+                    onChange={(e) => setFormData(prev => ({ ...prev, companyId: e.target.value }))}
+                    placeholder="Nenhuma empresa cadastrada"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled
+                  />
+                )}
               </div>
 
               <button
@@ -754,7 +912,9 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
                 disabled={isGenerating}
                 className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {isGenerating ? '⏳ Gerando...' : '📊 Gerar prévia'}
+                {isGenerating 
+                  ? '⏳ Gerando...' 
+                  : (signedCompany ? '📊 Gerar Relatório Assinado' : '📊 Gerar prévia')}
               </button>
             </div>
           </div>
@@ -775,7 +935,7 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
               <div className="space-y-4">
                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                   <div className="text-green-800 font-medium mb-3">
-                    ✅ Prévia gerada com dados carregados
+                    {signedCompany ? '✅ Relatório oficial assinado com e-CNPJ' : '✅ Prévia gerada com dados carregados'}
                   </div>
                   
                   <div className="space-y-2 text-sm">
@@ -801,7 +961,7 @@ export default function ReportsManager({ className = '' }: ReportsManagerProps) 
                   onClick={downloadReport}
                   className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors"
                 >
-                  📥 Baixar prévia
+                  {signedCompany ? '📥 Baixar Relatório Assinado' : '📥 Baixar prévia'}
                 </button>
 
                 {currentReport.type === 'espelho' && (

@@ -16,8 +16,10 @@ export function useBackgroundSync(options: BackgroundSyncOptions = {}) {
     autoRegister = true
   } = options;
 
-  // Service Worker habilitado apenas em produção
-  const isProduction = process.env.NODE_ENV === 'production';
+  // Service Worker habilitado em produção ou se explicitamente ativado em desenvolvimento
+  const isProduction = 
+    process.env.NODE_ENV === 'production' || 
+    process.env.NEXT_PUBLIC_ENABLE_SW_DEV === 'true';
 
   const serviceWorkerRef = useRef<ServiceWorker | null>(null);
   const [mounted, setMounted] = useState(false);

@@ -1,5 +1,10 @@
 import { initializeApp, getApps } from "firebase/app";
-import { initializeAppCheck, ReCaptchaV3Provider, AppCheck } from "firebase/app-check";
+import {
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+  ReCaptchaV3Provider,
+  AppCheck
+} from "firebase/app-check";
 import { getAnalytics, isSupported, Analytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getFirestore, initializeFirestore } from "firebase/firestore";
@@ -29,6 +34,22 @@ const APP_CHECK_SITE_KEY_PLACEHOLDERS = new Set([
   "YOUR_APP_CHECK_SITE_KEY"
 ]);
 
+const firebaseDebugEnabled =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_VERBOSE_FIREBASE_LOGS === "true";
+
+function logFirebaseDebug(...args: unknown[]): void {
+  if (firebaseDebugEnabled) {
+    console.debug("[firebase]", ...args);
+  }
+}
+
+function warnFirebaseDebug(...args: unknown[]): void {
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(...args);
+  }
+}
+
 function getAppCheckSiteKey(): string | null {
   const siteKey = (
     process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY ||
@@ -47,11 +68,25 @@ function getAppCheckSiteKey(): string | null {
     siteKey.toLowerCase().includes("placeholder");
 
   if (isPlaceholder) {
-    console.warn("Firebase App Check ignorado: chave publica de exemplo detectada.");
+    warnFirebaseDebug("Firebase App Check ignorado: chave publica de exemplo detectada.");
     return null;
   }
 
   return siteKey;
+}
+
+function createAppCheckProvider(siteKey: string) {
+  const provider = (
+    process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_PROVIDER ||
+    process.env.NEXT_PUBLIC_APPCHECK_PROVIDER ||
+    "recaptcha-v3"
+  ).trim().toLowerCase();
+
+  if (provider === "recaptcha-enterprise" || provider === "enterprise") {
+    return new ReCaptchaEnterpriseProvider(siteKey);
+  }
+
+  return new ReCaptchaV3Provider(siteKey);
 }
 
 // Função para inicializar Firebase de forma robusta
@@ -59,7 +94,7 @@ function initializeFirebase() {
   try {
     // Verificar se estamos no cliente
     if (typeof window === 'undefined') {
-      console.log('🚫 Firebase: Skipping initialization during SSR');
+      logFirebaseDebug('Skipping initialization during SSR');
       return;
     }
 
@@ -67,10 +102,10 @@ function initializeFirebase() {
     const apps = getApps();
     if (apps.length > 0) {
       app = apps[0];
-      console.log('♻️ Firebase: Usando app existente');
+      logFirebaseDebug('Usando app existente');
     } else {
       app = initializeApp(firebaseConfig);
-      console.log('🆕 Firebase: App inicializado');
+      logFirebaseDebug('App inicializado');
     }
 
     // Inicializar serviços apenas uma vez
@@ -78,7 +113,7 @@ function initializeFirebase() {
       auth = getAuth(app);
       // Configurar timeout para auth
       auth.languageCode = 'pt';
-      console.log('🔐 Firebase Auth inicializado');
+      logFirebaseDebug('Firebase Auth inicializado');
     }
 
     if (!db) {
@@ -96,12 +131,12 @@ function initializeFirebase() {
             experimentalForceLongPolling: true
           })
         });
-        console.log('🗃️ Firebase Firestore inicializado com cache otimizado');
+        logFirebaseDebug('Firebase Firestore inicializado com cache otimizado');
       } catch (error) {
-        console.warn('⚠️ Firestore já inicializado, usando instância existente');
+        warnFirebaseDebug('Firestore já inicializado, usando instância existente');
         try {
           db = getFirestore(app);
-          console.log('🗃️ Usando instância Firestore existente');
+          logFirebaseDebug('Usando instância Firestore existente');
         } catch (fallbackError) {
           console.error('❌ Erro crítico ao obter Firestore:', fallbackError);
           throw fallbackError;
@@ -112,9 +147,9 @@ function initializeFirebase() {
     if (!storage) {
       try {
         storage = getStorage(app);
-        console.log('📁 Firebase Storage inicializado');
+        logFirebaseDebug('Firebase Storage inicializado');
       } catch (error) {
-        console.error('❌ Erro ao inicializar Storage:', error);
+        warnFirebaseDebug('Erro ao inicializar Storage:', error);
         // Storage não é crítico, continuar sem ele
       }
     }
@@ -128,10 +163,10 @@ function initializeFirebase() {
         }
 
         appCheck = initializeAppCheck(app, {
-          provider: new ReCaptchaV3Provider(siteKey),
+          provider: createAppCheckProvider(siteKey),
           isTokenAutoRefreshEnabled: true
         });
-        console.log('🛡️ Firebase App Check inicializado');
+        logFirebaseDebug('Firebase App Check inicializado');
       }
     }
 
@@ -141,22 +176,22 @@ function initializeFirebase() {
         .then((supported) => {
           if (supported) {
             analytics = getAnalytics(app);
-            console.log('📊 Firebase Analytics inicializado');
+            logFirebaseDebug('Firebase Analytics inicializado');
           } else {
-            console.log('📊 Analytics não suportado neste navegador');
+            logFirebaseDebug('Analytics não suportado neste navegador');
           }
         })
         .catch((error) => {
-          console.warn('⚠️ Erro ao verificar suporte do Analytics:', error);
+          warnFirebaseDebug('Erro ao verificar suporte do Analytics:', error);
         });
     }
 
-    console.log('✅ Firebase inicialização completa');
+    logFirebaseDebug('Firebase inicialização completa');
   } catch (error) {
     console.error('❌ Erro crítico ao inicializar Firebase:', error);
     // Em desenvolvimento, não quebrar a aplicação
     if (process.env.NODE_ENV === 'development') {
-      console.warn('🔧 Continuando em modo de desenvolvimento sem Firebase completo');
+      warnFirebaseDebug('Continuando em modo de desenvolvimento sem Firebase completo');
     } else {
       throw error;
     }
