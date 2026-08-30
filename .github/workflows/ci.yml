@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Setup Firebase Tools
+        run: npm install -g firebase-tools
       - name: Lint
         run: pnpm lint
       - name: Typecheck
