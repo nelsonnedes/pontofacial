@@ -1,0 +1,222 @@
+[
+  {
+    "paths": ["face_expression_model.bin"],
+    "weights": [
+      {
+        "name": "conv2d_Conv2D",
+        "shape": [3, 3, 3, 32],
+        "dtype": "float32"
+      },
+      {
+        "name": "conv2d_Conv2D_1",
+        "shape": [32],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_depthwise_kernel",
+        "shape": [3, 3, 32, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_pointwise_kernel",
+        "shape": [1, 1, 32, 64],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_bias",
+        "shape": [64],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_1_depthwise_kernel",
+        "shape": [3, 3, 64, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_1_pointwise_kernel",
+        "shape": [1, 1, 64, 128],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_1_bias",
+        "shape": [128],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_2_depthwise_kernel",
+        "shape": [3, 3, 128, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_2_pointwise_kernel",
+        "shape": [1, 1, 128, 128],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_2_bias",
+        "shape": [128],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_3_depthwise_kernel",
+        "shape": [3, 3, 128, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_3_pointwise_kernel",
+        "shape": [1, 1, 128, 256],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_3_bias",
+        "shape": [256],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_4_depthwise_kernel",
+        "shape": [3, 3, 256, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_4_pointwise_kernel",
+        "shape": [1, 1, 256, 256],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_4_bias",
+        "shape": [256],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_5_depthwise_kernel",
+        "shape": [3, 3, 256, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_5_pointwise_kernel",
+        "shape": [1, 1, 256, 512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_5_bias",
+        "shape": [512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_6_depthwise_kernel",
+        "shape": [3, 3, 512, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_6_pointwise_kernel",
+        "shape": [1, 1, 512, 512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_6_bias",
+        "shape": [512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_7_depthwise_kernel",
+        "shape": [3, 3, 512, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_7_pointwise_kernel",
+        "shape": [1, 1, 512, 512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_7_bias",
+        "shape": [512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_8_depthwise_kernel",
+        "shape": [3, 3, 512, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_8_pointwise_kernel",
+        "shape": [1, 1, 512, 512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_8_bias",
+        "shape": [512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_9_depthwise_kernel",
+        "shape": [3, 3, 512, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_9_pointwise_kernel",
+        "shape": [1, 1, 512, 512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_9_bias",
+        "shape": [512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_10_depthwise_kernel",
+        "shape": [3, 3, 512, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_10_pointwise_kernel",
+        "shape": [1, 1, 512, 512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_10_bias",
+        "shape": [512],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_11_depthwise_kernel",
+        "shape": [3, 3, 512, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_11_pointwise_kernel",
+        "shape": [1, 1, 512, 1024],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_11_bias",
+        "shape": [1024],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_12_depthwise_kernel",
+        "shape": [3, 3, 1024, 1],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_12_pointwise_kernel",
+        "shape": [1, 1, 1024, 1024],
+        "dtype": "float32"
+      },
+      {
+        "name": "separable_conv2d_12_bias",
+        "shape": [1024],
+        "dtype": "float32"
+      },
+      {
+        "name": "dense_MatMul",
+        "shape": [1024, 7],
+        "dtype": "float32"
+      },
+      {
+        "name": "dense_BiasAdd",
+        "shape": [7],
+        "dtype": "float32"
+      }
+    ]
+  }
+]

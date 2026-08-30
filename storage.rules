@@ -1,0 +1,56 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        'admin' in request.auth.token &&
+        request.auth.token.admin == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isImageUnderLimit(maxSizeMb) {
+      return request.resource != null &&
+        request.resource.size < maxSizeMb * 1024 * 1024 &&
+        request.resource.size > 0 &&
+        request.resource.contentType.matches('image/(jpeg|jpg|png)');
+    }
+    function isValidTempFile() {
+      return request.resource != null &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.size > 0;
+    }
+
+    match /marcacoes/{userId}/{fileName} {
+      allow create: if isOwner(userId) && isImageUnderLimit(5);
+      allow read: if isOwner(userId) || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /documentos/{path=**} {
+      allow read, write: if isAdmin();
+    }
+
+    match /avatars/{userId}/{fileName} {
+      allow create: if isOwner(userId) && isImageUnderLimit(2);
+      allow read: if isOwner(userId) || isAdmin();
+      allow update, delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /temp/{userId}/{fileName} {
+      allow create: if isOwner(userId) && isValidTempFile();
+      allow read, update, delete: if isOwner(userId);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

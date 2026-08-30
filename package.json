@@ -1,19 +1,42 @@
 {
   "name": "ponto-facial",
   "private": true,
-  "packageManager": "pnpm@9",
-  "workspaces": [
-    "apps/*",
-    "packages/*",
-    "functions"
-  ],
+  "packageManager": "pnpm@10.17.1",
+  "pnpm": {
+    "overrides": {
+      "@grpc/grpc-js": "1.14.4",
+      "@tootallnate/once": "2.0.1",
+      "qs": "6.15.2",
+      "uuid": "11.1.1",
+      "cloudevents>ajv": "8.18.0",
+      "brace-expansion": "2.0.3",
+      "yaml": "2.8.3",
+      "postcss": "8.5.10",
+      "@types/node": "^22.0.0",
+      "fast-uri": "^3.1.2",
+      "glob": "^10.5.0",
+      "jws@3": "3.2.3",
+      "jws@4": "4.0.1",
+      "minimatch": "^9.0.7",
+      "path-to-regexp@0.1": "0.1.13",
+      "picomatch": "^2.3.2",
+      "protobufjs": "^7.5.8"
+    }
+  },
   "scripts": {
-    "postinstall": "pnpm -r install",
-    "dev:mobile": "pnpm --filter mobile-repp dev",
-    "dev:web": "pnpm --filter web-ptrp dev",
     "dev:pwa": "pnpm --filter pwa dev",
-    "build:web": "pnpm --filter web-ptrp build",
     "build:pwa": "pnpm --filter pwa build",
-    "lint": "eslint . --ext .ts,.tsx,.js,.jsx || true"
+    "build:all": "pnpm --filter pwa build && pnpm --filter functions build",
+    "deploy:pwa": "pnpm build:pwa && firebase deploy --only hosting",
+    "deploy:all": "pnpm build:all && firebase deploy",
+    "deploy:functions": "firebase deploy --only functions",
+    "deploy:rules": "firebase deploy --only firestore:rules,storage:rules",
+    "cert:connector": "node tools/cert-connector/server.mjs",
+    "clean": "pnpm --filter pwa clean",
+    "dev:clean": "pnpm clean && pnpm dev:pwa",
+    "lint": "pnpm --filter pwa lint:check && pnpm --filter functions lint",
+    "lint:fix": "pnpm --filter pwa lint && pnpm --filter functions lint",
+    "typecheck": "pnpm --filter pwa typecheck && pnpm --filter functions build",
+    "test:rules": "firebase emulators:exec --only firestore \"pnpm --filter pwa test:rules\""
   }
 }

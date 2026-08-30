@@ -1,367 +1,365 @@
-// Service Worker otimizado com timeouts e melhor tratamento de message channels
-const CACHE_NAME = 'ponto-facial-v3';
-const STATIC_CACHE = 'ponto-facial-static-v3';
-const TIMEOUT_DURATION = 8000; // 8 segundos timeout
-const MESSAGE_TIMEOUT = 5000; // 5 segundos para message channels
+// Service Worker para Ponto Facial PWA — P4-3 manual (output:export não suporta next-pwa)
+// Versao: 1.0.5 — CACHE v12 — TODO P4 futuro: migrar para Workbox quando SSR (remover output:export)
 
-// Mapa para rastrear message channels ativos
-const activeChannels = new Map();
+const CACHE_NAME = 'ponto-facial-v12';
+const PWA_ASSET_VERSION = '20260524-icon-v2';
+const OFFLINE_URL = '/app';
 
-// Função utilitária para timeout em promises
-function withTimeout(promise, timeoutMs = TIMEOUT_DURATION) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Operation timeout')), timeoutMs)
-    )
-  ]);
+// Recursos essenciais seguros para cache persistente.
+// HTML de paginas deve ser network-first para evitar chunks antigos apos deploy.
+const ESSENTIAL_RESOURCES = [
+  `/manifest.webmanifest?v=${PWA_ASSET_VERSION}`,
+  `/favicon.ico?v=${PWA_ASSET_VERSION}`,
+  `/icons/apple-touch-icon.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-32x32.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-48x48.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-72x72.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-96x96.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-128x128.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-144x144.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-152x152.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-192x192.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-384x384.png?v=${PWA_ASSET_VERSION}`,
+  `/icons/icon-512x512.png?v=${PWA_ASSET_VERSION}`
+];
+
+// Fallback offline. Ele pode ficar em cache, mas nunca deve vencer a rede.
+const STATIC_RESOURCES = [
+  OFFLINE_URL
+];
+
+const NEXT_STATIC_PREFIX = '/_next/static/';
+const CACHEABLE_STATIC_EXTENSIONS = [
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.svg',
+  '.ico',
+  '.webmanifest'
+];
+
+function isHtmlRequest(request) {
+  return request.mode === 'navigate' ||
+    (request.headers.get('accept') || '').includes('text/html');
+}
+
+function isNextStaticAsset(url) {
+  return url.origin === location.origin && url.pathname.startsWith(NEXT_STATIC_PREFIX);
+}
+
+function hasFileExtension(pathname) {
+  return /\/[^/]+\.[^/]+$/.test(pathname);
+}
+
+function shouldLetBrowserHandleCanonicalRedirect(request, url) {
+  return url.origin === location.origin &&
+    isHtmlRequest(request) &&
+    url.pathname !== '/' &&
+    !url.pathname.endsWith('/') &&
+    !hasFileExtension(url.pathname);
+}
+
+function shouldBypassServiceWorker(url) {
+  return (
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('google.com') ||
+    url.hostname.includes('gstatic.com') ||
+    url.hostname.includes('firebase') ||
+    url.hostname.includes('firestore') ||
+    url.pathname.startsWith('/api/') ||
+    isNextStaticAsset(url) ||
+    url.pathname.includes('/v1alpha/') ||
+    url.pathname.includes('/executor.') ||
+    url.pathname.includes('/js/api.') ||
+    url.pathname.includes('/npm/') ||
+    url.pathname.includes('/_/scs/') ||
+    url.pathname.includes('/google.firestore.') ||
+    url.pathname.includes('/_/firebase/') ||
+    url.pathname.includes('/recaptcha/') ||
+    url.pathname.includes('/analytics/') ||
+    url.pathname.includes('/gtag/') ||
+    url.searchParams.has('_rsc') ||
+    url.pathname.endsWith('index.txt') ||
+    url.protocol === 'chrome-extension:' ||
+    url.protocol === 'moz-extension:' ||
+    url.protocol === 'data:' ||
+    url.protocol === 'blob:'
+  );
+}
+
+function isCacheableStatic(url) {
+  return url.origin === location.origin &&
+    CACHEABLE_STATIC_EXTENSIONS.some(ext => url.pathname.endsWith(ext));
+}
+
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+
+  try {
+    const response = await fetch(request, {
+      cache: 'no-store',
+      redirect: 'follow'
+    });
+
+    if (
+      response &&
+      response.status === 200 &&
+      response.type === 'basic' &&
+      !response.redirected
+    ) {
+      cache.put(request, response.clone()).catch(err => {
+        console.warn('⚠️ Service Worker: Erro ao atualizar cache:', err);
+      });
+    }
+
+    return response;
+  } catch (error) {
+    console.log('📵 Service Worker: Navegacao offline, tentando cache:', request.url);
+    return (await cache.match(request)) ||
+      (await cache.match(OFFLINE_URL)) ||
+      new Response('Offline', {
+        status: 503,
+        statusText: 'Service Unavailable'
+      });
+  }
+}
+
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+
+  if (cached) {
+    console.log('📦 Service Worker: Servindo estatico do cache:', request.url);
+    return cached;
+  }
+
+  const response = await fetch(request, { redirect: 'follow' });
+
+  if (
+    response &&
+    response.status === 200 &&
+    response.type === 'basic' &&
+    !response.redirected
+  ) {
+    cache.put(request, response.clone()).catch(err => {
+      console.warn('⚠️ Service Worker: Erro ao cachear estatico:', err);
+    });
+  }
+
+  return response;
 }
 
 // Instalar Service Worker
 self.addEventListener('install', (event) => {
-  console.log('📥 Service Worker instalando...');
+  console.log('🔧 Service Worker: Instalando...');
   
   event.waitUntil(
-    withTimeout(
-      caches.open(CACHE_NAME)
-        .then((cache) => {
-          console.log('Service Worker: Caching Files');
-          return cache.addAll(['/']);
-        })
-        .catch((error) => {
-          console.error('Service Worker: Cache failed', error);
-        })
-    ).catch((error) => {
-      console.error('Service Worker: Install timeout', error);
-    })
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('📦 Service Worker: Cache aberto');
+        
+        // Cache inteligente: ícones primeiro, depois outros recursos.
+        const iconResources = ESSENTIAL_RESOURCES.filter(url => url.includes('/icons/'));
+        const otherResources = ESSENTIAL_RESOURCES.filter(url => !url.includes('/icons/'));
+        
+        return Promise.all([
+          // Cache ícones primeiro (crítico)
+          cache.addAll(iconResources).catch(err => {
+            console.warn('⚠️ Alguns ícones falharam no cache:', err);
+            // Tentar cache individual dos ícones
+            return Promise.all(iconResources.map(iconUrl => 
+              cache.add(iconUrl).catch(iconErr => {
+                console.warn(`⚠️ Falha ao cachear ícone ${iconUrl}:`, iconErr);
+              })
+            ));
+          }),
+          // Cache outros recursos essenciais
+          cache.addAll(otherResources).catch(err => {
+            console.warn('⚠️ Alguns recursos essenciais falharam no cache:', err);
+          }),
+          // Cache estáticos (opcional)
+          cache.addAll(STATIC_RESOURCES).catch(err => {
+            console.warn('⚠️ Alguns recursos estáticos falharam no cache:', err);
+          })
+        ]);
+      })
+      .then(() => {
+        console.log('✅ Service Worker: Cache inicial criado');
+        // Força a ativação imediata
+        return self.skipWaiting();
+      })
+      .catch(err => {
+        console.error('❌ Service Worker: Erro na instalação:', err);
+      })
   );
-  
-  // Força a ativação imediata do novo Service Worker
-  self.skipWaiting();
 });
 
-// Limpar caches antigos e ativar
+// Ativar Service Worker
 self.addEventListener('activate', (event) => {
-  console.log('🔄 Service Worker ativando...');
+  console.log('🚀 Service Worker: Ativando...');
   
   event.waitUntil(
-    withTimeout(
-      Promise.all([
-        // Limpar caches antigos
-        caches.keys().then((cacheNames) => {
-          return Promise.all(
-            cacheNames.map((cacheName) => {
-              if (cacheName !== CACHE_NAME && cacheName !== STATIC_CACHE) {
-                console.log('🗑️ Removendo cache antigo:', cacheName);
-                return caches.delete(cacheName);
-              }
+    caches.keys()
+      .then((cacheNames) => {
+        return Promise.all(
+          cacheNames
+            .filter(cacheName => cacheName !== CACHE_NAME)
+            .map(cacheName => {
+              console.log('🗑️ Service Worker: Removendo cache antigo:', cacheName);
+              return caches.delete(cacheName);
             })
-          );
-        }),
-        // Assumir controle imediato de todas as abas
-        self.clients.claim()
-      ])
-    ).then(() => {
-      console.log('✅ Service Worker ativado com sucesso');
-    }).catch((error) => {
-      console.error('Service Worker: Activation timeout', error);
-    })
-  );
-});
-
-// Interceptar requisições com timeout
-self.addEventListener('fetch', (event) => {
-  const request = event.request;
-  
-  // Não processar requisições problemáticas
-  if (request.url.startsWith('chrome-extension://') || 
-      request.url.startsWith('data:') || 
-      request.url.startsWith('blob:') ||
-      request.url.startsWith('chrome:') ||
-      request.url.startsWith('moz-extension://') ||
-      request.url.startsWith('edge://') ||
-      request.url.includes('chrome-extension')) {
-    return;
-  }
-  
-  // Apenas cachear requisições GET HTTP/HTTPS
-  if (request.method !== 'GET' || !request.url.startsWith('http')) {
-    return;
-  }
-
-  event.respondWith(
-    withTimeout(
-      caches.match(request).then((response) => {
-        // Retornar do cache se disponível
-        if (response) {
-          return response;
-        }
-
-        // Buscar da rede com timeout
-        return withTimeout(fetch(request), 6000).then((response) => {
-          // Não cachear se não for uma resposta válida
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
-
-          // Clonar a resposta para o cache
-          const responseToCache = response.clone();
-          
-          // Cachear de forma segura com timeout
-          withTimeout(
-            caches.open(CACHE_NAME).then((cache) => {
-              return cache.put(request, responseToCache);
-            }),
-            3000
-          ).catch((error) => {
-            console.warn('⚠️ Falha ao cachear resposta:', error);
+        );
+      })
+      .then(() => {
+        console.log('✅ Service Worker: Ativado e assumindo controle');
+        return self.clients.claim();
+      })
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({
+            type: 'SW_UPDATED',
+            cacheName: CACHE_NAME,
+            timestamp: Date.now()
           });
-
-          return response;
-        }).catch((error) => {
-          console.warn('⚠️ Falha na requisição:', error);
-          // Fallback para páginas offline
-          if (request.destination === 'document') {
-            return caches.match('/offline.html') || new Response('Offline');
-          }
-          throw error;
         });
       })
-    ).catch((error) => {
-      console.warn('⚠️ Fetch timeout ou erro:', error);
-      // Fallback básico
-      if (request.destination === 'document') {
-        return new Response('Service temporarily unavailable', { status: 503 });
-      }
-      throw error;
-    })
+      .catch(err => {
+        console.error('❌ Service Worker: Erro na ativação:', err);
+      })
   );
 });
 
-// Mensagens do cliente com timeout e melhor tratamento
+// Interceptar requisições
+self.addEventListener('fetch', (event) => {
+  // Só interceptar requisições GET
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  const url = new URL(event.request.url);
+
+  // Firebase Hosting redireciona paginas exportadas para a versao com barra final.
+  // Deixar o navegador seguir esse redirect evita respostas redirecionadas dentro do FetchEvent.
+  if (shouldLetBrowserHandleCanonicalRedirect(event.request, url)) {
+    return;
+  }
+
+  if (shouldBypassServiceWorker(url)) {
+    return;
+  }
+
+  if (isHtmlRequest(event.request)) {
+    event.respondWith(networkFirst(event.request));
+    return;
+  }
+
+  if (isCacheableStatic(url)) {
+    event.respondWith(cacheFirst(event.request));
+  }
+});
+
+// Escutar mensagens do cliente
 self.addEventListener('message', (event) => {
-  const { data, ports } = event;
+  const { type, data } = event.data || {};
   
-  // Verificação robusta de mensagens para evitar erros "undefined"
-  if (!data) {
-    // Ignorar silenciosamente mensagens vazias
-    return;
-  }
-  
-  if (typeof data !== 'object') {
-    console.warn('⚠️ Mensagem inválida recebida (não é um objeto):', data);
-    return;
-  }
-
-  // Extrair type e id com verificação de existência
-  const type = data.type;
-  const id = data.id;
-  
-  // Validar tipo explicitamente - ignorar silenciosamente mensagens sem tipo
-  if (typeof type !== 'string' || type === '') {
-    // Mensagens do sistema podem não ter tipo, não logar erro
-    return;
-  }
-  
-  console.log('📨 Mensagem recebida:', { type, id });
-
-  // Criar timeout para message channels
-  const messageTimeout = setTimeout(() => {
-    if (id && activeChannels.has(id)) {
-      console.warn('⚠️ Message channel timeout:', id);
-      activeChannels.delete(id);
-    }
-  }, MESSAGE_TIMEOUT);
-
-  try {
-    switch (type) {
-      case 'SKIP_WAITING':
-        clearTimeout(messageTimeout);
-        self.skipWaiting();
-        break;
-        
-      case 'SYNC_REQUEST':
-        handleSyncRequest(event, messageTimeout);
-        break;
-        
-      case 'BACKGROUND_SYNC':
-        handleBackgroundSync(event, messageTimeout);
-        break;
-        
-      case 'PING':
-        // Resposta simples para verificar conectividade
-        clearTimeout(messageTimeout);
-        if (ports && ports[0]) {
-          ports[0].postMessage({ type: 'PONG', timestamp: Date.now() });
-        }
-        break;
-        
-      default:
-        clearTimeout(messageTimeout);
-        console.log('Tipo de mensagem desconhecido:', type);
-    }
-  } catch (error) {
-    clearTimeout(messageTimeout);
-    console.error('Erro ao processar mensagem:', error);
+  switch (type) {
+    case 'SKIP_WAITING':
+      console.log('⏩ Service Worker: Comando skip waiting recebido');
+      self.skipWaiting();
+      break;
+      
+    case 'TRIGGER_SYNC':
+      console.log('🔄 Service Worker: Comando trigger sync recebido');
+      // Notificar todos os clientes sobre a sincronização
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({
+            type: 'SYNC_REQUESTED',
+            timestamp: Date.now()
+          });
+        });
+      });
+      break;
+      
+    case 'CONNECTION_RESTORED':
+      console.log('📶 Service Worker: Conexão restaurada');
+      // Notificar clientes sobre conexão restaurada
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({
+            type: 'CONNECTION_RESTORED',
+            timestamp: Date.now()
+          });
+        });
+      });
+      break;
+      
+    case 'CACHE_STATUS':
+      // Responder com status do cache
+      caches.keys().then(cacheNames => {
+        event.ports[0].postMessage({
+          type: 'CACHE_STATUS_RESPONSE',
+          cacheNames,
+          mainCache: CACHE_NAME
+        });
+      });
+      break;
+      
+    default:
+      // ✅ CORREÇÃO: Verificar se data existe antes de logar
+      if (data && Object.keys(data).length > 0) {
+        console.log('📨 Service Worker: Mensagem recebida:', type, data);
+      } else if (type) {
+        console.log('📨 Service Worker: Mensagem recebida:', type, 'sem dados');
+      } else {
+        // Ignorar mensagens completamente inválidas para reduzir ruído
+        return;
+      }
+      break;
   }
 });
 
-// Tratar requisições de sincronização
-function handleSyncRequest(event, timeoutId) {
-  const { data, ports } = event;
-  const port = ports && ports[0];
-  
-  if (data.id) {
-    activeChannels.set(data.id, { port, timestamp: Date.now() });
-  }
-  
-  // Notificar clientes sobre sincronização
-  withTimeout(
-    self.clients.matchAll().then(clients => {
-      clients.forEach(client => {
-        try {
-          client.postMessage({ 
-            type: 'TRIGGER_SYNC', 
-            timestamp: Date.now() 
-          });
-        } catch (error) {
-          console.warn('⚠️ Falha ao enviar mensagem para cliente:', error);
-        }
-      });
-    }),
-    3000
-  ).then(() => {
-    clearTimeout(timeoutId);
-    if (data.id) {
-      activeChannels.delete(data.id);
-    }
-  }).catch((error) => {
-    console.error('Erro na sincronização:', error);
-    clearTimeout(timeoutId);
-    if (data.id) {
-      activeChannels.delete(data.id);
-    }
-  });
-}
-
-// Tratar background sync
-function handleBackgroundSync(event, timeoutId) {
-  const { data, ports } = event;
-  const port = ports && ports[0];
-  
-  if (data.id) {
-    activeChannels.set(data.id, { port, timestamp: Date.now() });
-  }
-  
-  // Processar background sync com timeout
-  withTimeout(
-    new Promise((resolve) => {
-      // Simular processamento de background sync
-      setTimeout(() => {
-        resolve({ success: true, processed: 0 });
-      }, 1000);
-    }),
-    4000
-  ).then((result) => {
-    clearTimeout(timeoutId);
-    
-    if (port) {
-      try {
-        port.postMessage({
-          type: 'SYNC_COMPLETE',
-          ...result,
-          timestamp: Date.now()
-        });
-      } catch (error) {
-        console.warn('⚠️ Falha ao responder via message port:', error);
-      }
-    }
-    
-    if (data.id) {
-      activeChannels.delete(data.id);
-    }
-  }).catch((error) => {
-    console.error('Erro no background sync:', error);
-    clearTimeout(timeoutId);
-    
-    if (port) {
-      try {
-        port.postMessage({
-          type: 'SYNC_COMPLETE',
-          success: false,
-          error: error.message,
-          timestamp: Date.now()
-        });
-      } catch (portError) {
-        console.warn('⚠️ Falha ao responder erro via message port:', portError);
-      }
-    }
-    
-    if (data.id) {
-      activeChannels.delete(data.id);
-    }
-  });
-}
-
-// Limpeza periódica de channels órfãos
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, channel] of activeChannels.entries()) {
-    if (now - channel.timestamp > MESSAGE_TIMEOUT * 2) {
-      console.log('🧹 Limpando channel órfão:', id);
-      activeChannels.delete(id);
-    }
-  }
-}, 30000); // Limpar a cada 30 segundos
-
-// Notificar quando online
-self.addEventListener('online', () => {
-  console.log('🌐 Conexão restaurada');
-  withTimeout(
-    self.clients.matchAll().then(clients => {
-      clients.forEach(client => {
-        try {
-          client.postMessage({ 
-            type: 'CONNECTION_RESTORED', 
-            timestamp: Date.now() 
-          });
-        } catch (error) {
-          console.warn('⚠️ Falha ao notificar restauração de conexão:', error);
-        }
-      });
-    }),
-    3000
-  ).catch((error) => {
-    console.error('Erro ao notificar conexão restaurada:', error);
-  });
-});
-
-// Background Sync API
+// Background Sync (se suportado)
 self.addEventListener('sync', (event) => {
-  console.log('🔄 Background sync event:', event.tag);
-  
   if (event.tag === 'background-sync') {
+    console.log('🔄 Service Worker: Background sync ativado');
     event.waitUntil(
-      withTimeout(
-        self.clients.matchAll().then(clients => {
-          clients.forEach(client => {
-            try {
-              client.postMessage({ 
-                type: 'BACKGROUND_SYNC', 
-                action: 'PROCESS_QUEUE',
-                timestamp: Date.now()
-              });
-            } catch (error) {
-              console.warn('⚠️ Falha ao enviar background sync:', error);
-            }
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({
+            type: 'BACKGROUND_SYNC',
+            timestamp: Date.now()
           });
-        }),
-        5000
-      ).catch((error) => {
-        console.error('Background sync timeout:', error);
+        });
       })
     );
   }
 });
 
-console.log('✅ Service Worker carregado com timeouts e melhor tratamento de message channels');
+// Push notifications (preparado para o futuro)
+self.addEventListener('push', (event) => {
+  console.log('🔔 Service Worker: Push recebido');
+  
+  const options = {
+    body: event.data ? event.data.text() : 'Notificação do Ponto Facial',
+    icon: `/icons/icon-192x192.png?v=${PWA_ASSET_VERSION}`,
+    badge: `/icons/icon-72x72.png?v=${PWA_ASSET_VERSION}`
+  };
+
+  event.waitUntil(
+    self.registration.showNotification('Ponto Facial PWA', options)
+  );
+});
+
+// Error handling
+self.addEventListener('error', (event) => {
+  console.error('❌ Service Worker: Erro:', event.error);
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+  console.error('❌ Service Worker: Promise rejeitada:', event.reason);
+});
+
+console.log('✅ Service Worker: Carregado com sucesso');

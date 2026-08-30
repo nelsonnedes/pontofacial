@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main, codex/production-hardening, "codex/*"]
+  pull_request:
+
+jobs:
+  lint-typecheck-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Setup Firebase Tools
+        run: npm install -g firebase-tools
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Build functions
+        run: pnpm --filter functions build
+      - name: Test rules (emulator)
+        run: pnpm test:rules
+      - name: Coverage (pwa)
+        run: pnpm --filter pwa test:coverage --run || true

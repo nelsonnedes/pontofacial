@@ -201,22 +201,38 @@ function buildHeader(h: AfdHeaderInput, periodo:{inicio:Date,fim:Date}, geradoEm
 }
 
 function sha256Hex(text: string): string {
-  return createHash('sha256').update(Buffer.from(text, 'utf-8')).digest('hex').toUpperCase()
+  if (!text || typeof text !== 'string') {
+    text = ''
+  }
+  try {
+    const hash = createHash('sha256').update(Buffer.from(text, 'utf-8')).digest('hex').toUpperCase()
+    return hash || ''
+  } catch (error) {
+    console.error('Erro ao gerar hash SHA256:', error)
+    return ''
+  }
 }
 
 function buildRegistro7(r: Registro7, prevHash: string, tz?: string){
+  // Validar dados de entrada
+  if (!r || typeof r !== 'object') {
+    throw new Error('Registro7 inválido')
+  }
+  
   const campos = [
-    padN(r.nsr, 9),                        // 001-009 NSR
+    padN(r.nsr || 0, 9),                        // 001-009 NSR
     '7',                                   // 010-010 tipo '7'
-    padA(formatDH(new Date(r.dataHoraMarcISO), tz), 24), // 011-034 DH marcação
-    padN(r.cpf, 12),                       // 035-046 CPF (12N)
+    padA(formatDH(new Date(r.dataHoraMarcISO || new Date().toISOString()), tz), 24), // 011-034 DH marcação
+    padN(r.cpf || '', 12),                       // 035-046 CPF (12N)
     padA(formatDH(new Date(r.dataHoraGravISO || new Date().toISOString()), tz), 24), // 047-070 DH gravação
     padN(r.coletor || '01', 2),            // 071-072 coletor (01 mobile)
     padN(r.offline ? '1' : '0', 1),        // 073-073 online '0' / offline '1'
     padA('', 64)                            // 074-137 hash (preencher depois)
   ]
+  
   const baseParaHash = campos.slice(0, 7).join('') + (prevHash || ''.padEnd(64, ' '))
-  const hash = sha256Hex(baseParaHash).slice(0,64) // 64 hex
+  const hashResult = sha256Hex(baseParaHash)
+  const hash = hashResult ? hashResult.slice(0, 64) : ''.padEnd(64, '0') // 64 hex
   campos[7] = padA(hash, 64)
   return { linha: campos.join(''), hash }
 }

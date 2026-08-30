@@ -1,110 +1,115 @@
-# Sistema de Ponto Facial
+# Sistema de Ponto Facial - PWA
 
-![Versão](https://img.shields.io/badge/versão-1.0.0-blue)
-![Licença](https://img.shields.io/badge/licença-MIT-green)
+## 📋 Visão Geral
 
-Sistema PWA (Progressive Web App) para registro de ponto eletrônico com reconhecimento facial, compatível com as normas da Portaria MTE 671/2021 (PTRP).
+Sistema de ponto eletrônico com reconhecimento facial desenvolvido como PWA (Progressive Web App) usando Next.js 15 e Firebase. Conforme Portaria 671/2021 do MTE para geração de AFD (Arquivo Fonte de Dados) e AEJ (Arquivo de Espelho de Jornada).
 
-## 📋 Características
+## 🚀 Status do Projeto
 
-- ✅ Reconhecimento facial em tempo real
-- ✅ Funcionamento offline (PWA)
-- ✅ Compatível com normas PTRP/FGTS
-- ✅ Geração de arquivos AFD e AEJ
-- ✅ Suporte a múltiplos navegadores (Chrome, Firefox, Edge, Safari)
-- ✅ Interface responsiva para desktop e dispositivos móveis
+**Progresso Geral: ~75% Completo** (Atualizado após correções críticas)
 
-## 🚀 Tecnologias
+### ✅ Implementado e Corrigido (Janeiro 2025)
+- ✅ Estrutura base do monorepo (Next.js 15 + Firebase)
+- ✅ Autenticação Firebase com sistema de administradores
+- ✅ Layout de proteção para rotas administrativas
+- ✅ Páginas administrativas (AFD, AEJ, Espelho, Usuários, etc.)
+- ✅ Geração de AFD/AEJ conforme Portaria 671/2021
+- ✅ Validação CRC-16/KERMIT para integridade de dados
+- ✅ PWA básico com manifest e service worker
+- ✅ Deploy automatizado no Firebase Hosting
+- ✅ Cloud Functions para gerenciamento de administradores
+- ✅ **NOVO**: React 18.3.1 compatível com Next.js 15
+- ✅ **NOVO**: Sistema offline unificado e otimizado
+- ✅ **NOVO**: Face API limpo sem código duplicado
+- ✅ **NOVO**: Configuração ESLint implementada
+- ✅ **NOVO**: Tailwind CSS via PostCSS (otimizado)
+- ✅ **NOVO**: Código limpo - arquivos desnecessários removidos
 
-- **Frontend**: Next.js, React, TailwindCSS
-- **Backend**: Firebase (Firestore, Authentication, Storage, Hosting)
-- **ML/AI**: TensorFlow.js, face-api.js (reconhecimento facial)
-- **PWA**: Service Workers, IndexedDB (Dexie.js)
+### 🚧 Em Desenvolvimento
+- 🔄 Reconhecimento facial (Face API Web + TensorFlow.js)
+- 🔄 Funcionalidade offline com IndexedDB
+- 🔄 Geolocalização para marcações
+- 🔄 Assinaturas digitais (CAdES/PAdES)
 
-## 📦 Estrutura do Projeto
+### ❌ Pendente
+- ❌ Componentes de câmera e liveness detection
+- ❌ Sincronização offline/online
+- ❌ Push notifications
+- ❌ Testes automatizados
+
+## 🏗️ Arquitetura
 
 ```
-pontofacial/
-├── apps/
-│   └── pwa/                   # Aplicação PWA principal
-│       ├── public/            # Arquivos estáticos e Service Worker
-│       │   ├── models/        # Modelos de ML para reconhecimento facial
-│       │   └── sw.js          # Service Worker para funcionalidades offline
-│       └── src/
-│           ├── app/           # Rotas da aplicação (Next.js App Router)
-│           ├── components/    # Componentes React reutilizáveis
-│           ├── hooks/         # React Hooks personalizados
-│           └── lib/           # Bibliotecas e utilitários
-│               ├── face-recognition.ts  # Serviço de reconhecimento facial
-│               └── face-worker.ts       # Web Worker para processamento ML
-└── packages/
-    └── core-legal/            # Biblioteca para conformidade legal (AFD/AEJ)
+ponto-facial-pwa/
+├── apps/pwa/                 # Aplicação Next.js principal
+│   ├── src/app/             # Rotas da aplicação
+│   │   ├── admin/           # Painel administrativo
+│   │   ├── app/             # Área do colaborador
+│   │   └── api/             # APIs internas
+│   └── public/              # Arquivos estáticos
+├── packages/
+│   ├── core-legal/          # Schemas AFD/AEJ, validações
+│   └── core-rules/          # Regras CLT
+├── functions/               # Cloud Functions
+└── firebase.json            # Configuração Firebase
 ```
 
-## 🔧 Instalação e Configuração
+## 🛠️ Tecnologias
+
+- **Frontend**: Next.js 15, React 18, TypeScript, Tailwind CSS
+- **Backend**: Firebase (Auth, Firestore, Functions, Hosting)
+- **PWA**: Workbox, Web App Manifest
+- **Reconhecimento Facial**: TensorFlow.js, Face API Web
+- **Offline**: IndexedDB com Dexie
+- **Legal**: Conformidade Portaria 671/2021 MTE
+
+## 🚀 Como Executar
 
 ### Pré-requisitos
-
-- Node.js 18+ e npm/pnpm
-- Conta no Firebase
+- Node.js 18+
+- pnpm
+- Firebase CLI
 
 ### Instalação
+```bash
+# Instalar dependências
+pnpm install
 
-1. Clone o repositório:
-   ```bash
-   git clone https://github.com/nelsonnedes/pontofacial.git
-   cd pontofacial
-   ```
+# Configurar Firebase
+firebase login
+firebase use dbponto-facial
 
-2. Instale as dependências:
-   ```bash
-   pnpm install
-   ```
+# Executar em desenvolvimento
+cd apps/pwa
+pnpm dev
+```
 
-3. Configure o Firebase:
-   ```bash
-   firebase login
-   firebase use --add
-   ```
+### Deploy
+```bash
+# Build da aplicação
+pnpm build
 
-4. Baixe os modelos de ML:
-   ```bash
-   cd apps/pwa
-   pnpm run download-models
-   ```
+# Deploy no Firebase
+firebase deploy
+```
 
-5. Execute o ambiente de desenvolvimento:
-   ```bash
-   pnpm run dev
-   ```
+## 🔐 Configuração de Administradores
 
-## 📱 Compatibilidade com Navegadores
+Administradores não devem ser promovidos por página pública.
+Use apenas o script interno `functions/scripts/set-claims.mjs` com credenciais
+de operação/IAM autorizadas e registre a alteração na trilha de auditoria.
 
-O sistema foi testado e é compatível com:
+## 📚 Documentação
 
-- Chrome 90+ (Desktop e Android)
-- Firefox 90+ (Desktop)
-- Edge 90+ (Desktop)
-- Safari 14+ (iOS e macOS)
+- [Prompt Original](./TRAE_PROMPT.md) - Especificação inicial do projeto
+- Sistema limpo e otimizado - arquivos de análise temporários removidos
 
-## 🛠️ Desenvolvimento
+## 🔗 Links Úteis
 
-### Comandos Úteis
-
-- `pnpm run dev` - Inicia o servidor de desenvolvimento
-- `pnpm run build` - Compila o projeto para produção
-- `pnpm run test` - Executa os testes unitários
-- `firebase deploy` - Implanta a aplicação no Firebase Hosting
+- **Aplicação**: https://dbponto-facial.web.app
+- **Console Firebase**: https://console.firebase.google.com/project/dbponto-facial
+- **Repositório**: Sistema local
 
 ## 📄 Licença
 
-Este projeto está licenciado sob a Licença MIT - veja o arquivo LICENSE para detalhes.
-
-## 👥 Contribuidores
-
-- [@nelsonnedes](https://github.com/nelsonnedes) - Desenvolvedor principal
-- [@frasico](https://github.com/frasico) - Contribuidor
-
-## 📞 Contato
-
-Para questões e suporte, entre em contato através das issues do GitHub ou pelo email: contato@exemplo.com
+Projeto proprietário - Todos os direitos reservados.

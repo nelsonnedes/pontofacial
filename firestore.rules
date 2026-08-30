@@ -1,29 +1,283 @@
-// Exemplo inicial de regras — refine antes de produção.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isSignedIn() { return request.auth != null; }
-    function isAdmin() { return isSignedIn() && 'admin' in request.auth.token && request.auth.token.admin == true; }
+    function isSignedIn() {
+      return request.auth != null;
+    }
 
-    match /empresas/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    function isAdmin() {
+      return isSignedIn() &&
+        'admin' in request.auth.token &&
+        request.auth.token.admin == true;
     }
-    match /estabelecimentos/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+
+    function hasPermission(permission) {
+      return isSignedIn() && (
+        isAdmin() ||
+        (
+          'permissions' in request.auth.token &&
+          request.auth.token.permissions is list &&
+          permission in request.auth.token.permissions
+        )
+      );
     }
-    match /usuarios/{id} {
-      allow read, write: if isAdmin() || (isSignedIn() && request.auth.uid == id);
+
+    function hasAnyPermission(permissions) {
+      return isSignedIn() && (
+        isAdmin() ||
+        (
+          'permissions' in request.auth.token &&
+          request.auth.token.permissions is list &&
+          request.auth.token.permissions.hasAny(permissions)
+        )
+      );
     }
-    match /marcacoes/{id} {
-      allow create: if isSignedIn() && request.resource.data.usuarioId == request.auth.uid;
-      allow read: if isAdmin() || resource.data.usuarioId == request.auth.uid;
-      allow update, delete: if isAdmin();
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
-    match /sequences/{id} {
+
+    function requestOwnerMatches() {
+      return isSignedIn() && (
+        (request.resource.data.keys().hasAny(['userId']) &&
+          request.resource.data.userId == request.auth.uid) ||
+        (request.resource.data.keys().hasAny(['usuarioId']) &&
+          request.resource.data.usuarioId == request.auth.uid) ||
+        (request.resource.data.keys().hasAny(['uid']) &&
+          request.resource.data.uid == request.auth.uid) ||
+        (request.resource.data.keys().hasAny(['authUid']) &&
+          request.resource.data.authUid == request.auth.uid)
+      );
+    }
+
+    function resourceOwnerMatches() {
+      return isSignedIn() && (
+        (resource.data.keys().hasAny(['userId']) &&
+          resource.data.userId == request.auth.uid) ||
+        (resource.data.keys().hasAny(['usuarioId']) &&
+          resource.data.usuarioId == request.auth.uid) ||
+        (resource.data.keys().hasAny(['uid']) &&
+          resource.data.uid == request.auth.uid) ||
+        (resource.data.keys().hasAny(['authUid']) &&
+          resource.data.authUid == request.auth.uid)
+      );
+    }
+
+    function consentOwnerMatches() {
+      return isSignedIn() && (
+        (request.resource.data.keys().hasAny(['uid']) &&
+          request.resource.data.uid == request.auth.uid) ||
+        (request.resource.data.keys().hasAny(['authUid']) &&
+          request.resource.data.authUid == request.auth.uid) ||
+        (request.resource.data.keys().hasAny(['acceptedByUid']) &&
+          request.resource.data.acceptedByUid == request.auth.uid)
+      );
+    }
+
+    function safeUserRoleOnCreate() {
+      return (!request.resource.data.keys().hasAny(['role']) ||
+          request.resource.data.role == 'user') &&
+        (!request.resource.data.keys().hasAny(['admin']) ||
+          request.resource.data.admin == false);
+    }
+
+    function changedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    // P0-5: Leitura restrita por permissão — evita vazamento CNPJ/coords para qualquer autenticado
+    match /empresas/{empresaId} {
+      allow read: if hasAnyPermission(['admin:companies', 'admin:employees', 'admin:users', 'admin:records', 'admin:dashboard', 'admin:geofences']) || hasAnyPermission(['app:mark-point', 'app:dashboard', 'app:history']);
+      allow write: if hasPermission('admin:companies');
+
+      match /funcionarios/{userId} {
+        allow read: if hasAnyPermission(['admin:companies', 'admin:employees', 'admin:users']) || isOwner(userId);
+        allow write: if hasAnyPermission(['admin:companies', 'admin:employees']);
+      }
+    }
+
+    match /estabelecimentos/{estabelecimentoId} {
+      allow read: if hasAnyPermission(['admin:companies', 'admin:employees', 'admin:users', 'admin:records', 'admin:dashboard']) || hasAnyPermission(['app:mark-point', 'app:dashboard']);
+      allow write: if hasPermission('admin:companies');
+    }
+
+    match /usuarios/{userId} {
+      allow read: if hasAnyPermission(['admin:users', 'admin:employees']) || isOwner(userId);
+      allow create: if hasPermission('admin:users') || (isOwner(userId) && safeUserRoleOnCreate());
+      allow update: if hasPermission('admin:users') || (
+        isOwner(userId) &&
+        changedOnly([
+          'name',
+          'displayName',
+          'photoURL',
+          'faceEmbedding',
+          'faceRegisteredAt',
+          'faceLastVerified',
+          'faceVerificationCount',
+          'legal',
+          'updatedAt'
+        ])
+      );
+      allow delete: if hasPermission('admin:users');
+    }
+
+    match /users/{userId} {
+      allow read: if hasAnyPermission(['admin:dashboard', 'admin:users']) || isOwner(userId);
+      allow create: if hasPermission('admin:users') || (isOwner(userId) && safeUserRoleOnCreate());
+      allow update: if hasPermission('admin:users') || (
+        isOwner(userId) &&
+        changedOnly([
+          'name',
+          'displayName',
+          'photoURL',
+          'employeeId',
+          'department',
+          'position',
+          'legal',
+          'updatedAt',
+          'lastLoginAt'
+        ])
+      );
+      allow delete: if hasPermission('admin:users');
+    }
+
+    match /marcacoes/{marcacaoId} {
+      // P0-4: Histórico imutável — apenas backend (Admin SDK) escreve; cliente não pode criar/alterar.
+      allow create: if false;
+      allow read: if hasAnyPermission(['admin:dashboard', 'admin:records', 'admin:reports']) || resourceOwnerMatches();
+      allow update, delete: if false;
+    }
+
+    match /timeRecords/{recordId} {
+      // P0-4: Histórico imutável — apenas backend (Admin SDK) escreve.
+      allow create: if false;
+      allow read: if hasAnyPermission(['admin:dashboard', 'admin:records', 'admin:reports']) || resourceOwnerMatches();
+      allow update, delete: if false;
+    }
+
+    match /sequences/{sequenceId} {
+      allow read, write: if false;
+    }
+
+    match /pointRequests/{requestId} {
+      allow read, write: if false;
+    }
+
+    match /atividades/{atividadeId} {
+      allow read, write: if hasPermission('admin:hr');
+    }
+
+    match /auditLogs/{logId} {
       allow read: if isAdmin();
-      allow write: if isAdmin(); // NSR gerado no servidor
+      allow write: if false;
+    }
+
+    match /consentRecords/{recordId} {
+      allow create: if consentOwnerMatches();
+      allow read: if isAdmin() || resourceOwnerMatches();
+      allow update, delete: if false;
+    }
+
+    match /documentSignatures/{signatureId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /webhookLogs/{webhookId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /systemConfig/{configId} {
+      allow read: if hasPermission('admin:settings') || (isSignedIn() && configId == 'legalTerms');
+      allow write: if hasPermission('admin:settings');
+    }
+
+    match /feriados/{feriadoId} {
+      allow read: if isSignedIn();
+      allow write: if hasAnyPermission(['admin:schedules', 'admin:hr']);
+    }
+
+    match /politicas/{politicaId} {
+      allow read: if isSignedIn();
+      allow write: if hasAnyPermission(['admin:schedules', 'admin:hr']);
+    }
+
+    match /funcionarios/{userId} {
+      allow read: if hasAnyPermission(['admin:employees', 'admin:users']) || isOwner(userId);
+      allow create, update, delete: if hasPermission('admin:employees');
+    }
+
+    match /geofences/{geofenceId} {
+      allow read: if hasAnyPermission(['admin:geofences', 'admin:records', 'admin:dashboard']) || hasPermission('app:mark-point');
+      allow write: if hasPermission('admin:geofences');
+    }
+
+    match /geofence_validations/{validationId} {
+      allow create: if requestOwnerMatches();
+      allow read: if hasAnyPermission(['admin:records', 'admin:geofences']) || resourceOwnerMatches();
+      allow update, delete: if hasAnyPermission(['admin:records', 'admin:geofences']);
+    }
+
+    match /employees/{employeeId} {
+      allow create: if hasPermission('admin:employees');
+      allow read: if hasAnyPermission(['admin:employees', 'admin:users', 'admin:records']) || 
+                    isOwner(employeeId) || 
+                    (resource != null && 
+                     ((resource.data.keys().hasAny(['authUid']) && resource.data.authUid == request.auth.uid) ||
+                      (resource.data.keys().hasAny(['userId']) && resource.data.userId == request.auth.uid) ||
+                      (resource.data.keys().hasAny(['uid']) && resource.data.uid == request.auth.uid)));
+      allow update, delete: if hasPermission('admin:employees');
+    }
+
+    match /employee_schedules/{scheduleId} {
+      allow create, update, delete: if hasPermission('admin:schedules');
+      allow read: if isSignedIn();
+    }
+
+    match /point_analysis/{analysisId} {
+      allow create: if hasAnyPermission(['admin:hr', 'admin:records']) || requestOwnerMatches();
+      allow read: if hasAnyPermission(['admin:hr', 'admin:records']) || resourceOwnerMatches();
+      allow update, delete: if hasAnyPermission(['admin:hr', 'admin:records']);
+    }
+
+    match /holidays/{holidayId} {
+      allow create, update, delete: if hasAnyPermission(['admin:schedules', 'admin:hr']);
+      allow read: if isSignedIn();
+    }
+
+    match /vacation_requests/{requestId} {
+      allow create: if hasPermission('admin:hr') || requestOwnerMatches();
+      allow read: if hasPermission('admin:hr') || resourceOwnerMatches();
+      allow update, delete: if hasPermission('admin:hr');
+    }
+
+    match /medical_leave_requests/{requestId} {
+      allow create: if hasPermission('admin:hr') || requestOwnerMatches();
+      allow read: if hasPermission('admin:hr') || resourceOwnerMatches();
+      allow update, delete: if hasPermission('admin:hr');
+    }
+
+    match /geofence_violations/{violationId} {
+      allow create: if requestOwnerMatches();
+      allow read: if hasAnyPermission(['admin:records', 'admin:geofences']) || resourceOwnerMatches();
+      allow update, delete: if hasAnyPermission(['admin:records', 'admin:geofences']);
+    }
+
+    match /review_records/{reviewId} {
+      allow create: if hasPermission('admin:records') || requestOwnerMatches();
+      allow read: if hasPermission('admin:records') || resourceOwnerMatches();
+      allow update, delete: if hasPermission('admin:records');
+    }
+
+    match /user_credentials/{credentialId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid);
+      allow update, delete: if request.auth != null && resource != null && resource.data.userId == request.auth.uid;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
