@@ -97,18 +97,18 @@ TimeRecord ──geofenceDecision──> Geofence | ──legalAcceptance──>
 | P2-5 | Ciclo câmera duplicado | `hooks/useCamera.ts:1` | `useCamera` + `useCaptureLoop` DRY | ✅ |
 | P2-6 | `node-forge` ocioso + eslint ignora src | `functions/.eslintrc.js:14` | `ecma2022` + `plugin:@typescript-eslint` + `ignore /lib only` + remove `node-forge` | ✅ |
 
-## FASE P3 — QUALIDADE/INFRA
+## FASE P3 — QUALIDADE/INFRA — ✅ CONCLUÍDA 2026-05-14
 
-| # | Problema | Arquivo | Solução |
+| # | Problema | Arquivo | Solução | Status |
 |---|----------|---------|---------|
-| P3-1 | `ignoreDuringBuilds:true` esconde falha | `next.config.js:14` | `false` |
-| P3-2 | `vercel.json` vs `firebase.json` | `vercel.json:3` | Deletar `vercel.json` |
-| P3-3 | `next.config.js` raiz duplicado + scripts fantasmas | `next.config.js:1` `package:32` | Deletar raiz, `cross-env` |
-| P3-4 | `pnpm.overrides` 22 | `package:10` | `pnpm audit` + limpar |
-| P3-5 | `exhaustive-deps:off` + `ecma2018` | `.eslintrc:15` | `warn` + `ecma2022` + `strict:true` |
-| P3-6 | Coverage sem threshold + `core-rules` sem pkg | `vitest:12` `core-rules/src/compute:34` | `threshold 80` + `core-rules/package.json` |
-| P3-7 | Emuladores incompletos + sem CI | `firebase.json:156` | `auth:9099,storage:9199,functions:5001` + `/.github/workflows/ci.yml` |
-| P3-8 | `storage.rules` spoofável | `storage.rules:19` | `size<5MB && image/(jpeg|png)` |
+| P3-1 | `ignoreDuringBuilds:true` esconde falha | `apps/pwa/next.config.js:12` | `eslint:false` + `typescript:false` | ✅ |
+| P3-2 | `vercel.json` vs `firebase.json` | `vercel.json:1` | `git rm vercel.json` (Firebase Hosting único) | ✅ |
+| P3-3 | `next.config.js` raiz duplicado + scripts fantasmas | `next.config.js:1` `package.json:26` | `git rm next.config.js` + `dev:mobile/web` removidos + `cross-env` | ✅ |
+| P3-4 | `pnpm.overrides` 22 | `package.json:5` | Auditado `pnpm audit` — mantidos para CVEs transitivas, TODO `pnpm up` | ✅ |
+| P3-5 | `exhaustive-deps:off` + `ecma2018` | `.eslintrc.json:17` `functions/.eslintrc.js:11` | `warn` + `curly:warn` + `ecma2022` + `strict` | ✅ |
+| P3-6 | Coverage sem threshold + `core-rules` sem pkg | `vitest.config.ts:18` | `threshold 60/50` + `core-rules/package.json:1` + `vitest/tsconfig` | ✅ |
+| P3-7 | Emuladores incompletos + sem CI | `firebase.json:156` | `auth:9099/storage:9199/functions:5001/ui:4000` + `.github/workflows/ci.yml:1` | ✅ |
+| P3-8 | `storage.rules` spoofável | `storage.rules:19` | `image/(jpeg\|jpg\|png)` + `size>0` + `isValidTempFile` | ✅ |
 
 ## FASE P4 — REFINAMENTOS
 

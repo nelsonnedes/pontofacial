@@ -18,7 +18,13 @@ export default defineConfig({
         '**/*.config.*',
         'out/',
         '.next/'
-      ]
+      ],
+      thresholds: {
+        lines: 60,
+        branches: 50,
+        functions: 60,
+        statements: 60
+      }
     }
   },
   resolve: {

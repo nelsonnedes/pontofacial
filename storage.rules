@@ -19,7 +19,13 @@ service firebase.storage {
     function isImageUnderLimit(maxSizeMb) {
       return request.resource != null &&
         request.resource.size < maxSizeMb * 1024 * 1024 &&
-        request.resource.contentType.matches('image/.*');
+        request.resource.size > 0 &&
+        request.resource.contentType.matches('image/(jpeg|jpg|png)');
+    }
+    function isValidTempFile() {
+      return request.resource != null &&
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.size > 0;
     }
 
     match /marcacoes/{userId}/{fileName} {
@@ -39,7 +45,7 @@ service firebase.storage {
     }
 
     match /temp/{userId}/{fileName} {
-      allow create: if isOwner(userId) && request.resource.size < 5 * 1024 * 1024;
+      allow create: if isOwner(userId) && isValidTempFile();
       allow read, update, delete: if isOwner(userId);
     }
 

@@ -10,6 +10,14 @@ const nextConfig = {
     unoptimized: true
   },
   
+  // P3-1: Build deve falhar em lint/type errors — Menos é Mais, sem dívida oculta
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+
   // ✅ PWA: Configuração removida (não funciona com export estático)
   
   // Desabilitar features que não funcionam com export estático

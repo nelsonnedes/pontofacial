@@ -5,21 +5,21 @@
  * TODO P3: index.ts deve importar daqui (hoje ainda duplicado para evitar regressão em callables autoritativos)
  */
 
-import { createHash } from 'crypto';
+import { createHash } from "crypto";
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 export function sanitizeText(value: unknown, maxLength = 200): string | undefined {
-  if (typeof value !== 'string') return undefined;
+  if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed ? trimmed.slice(0, maxLength) : undefined;
 }
 
 export function sanitizeScalarText(value: unknown, maxLength = 200): string | undefined {
-  if (typeof value === 'string') return sanitizeText(value, maxLength);
-  if (typeof value === 'number' || typeof value === 'boolean') {
+  if (typeof value === "string") return sanitizeText(value, maxLength);
+  if (typeof value === "number" || typeof value === "boolean") {
     return String(value).trim().slice(0, maxLength) || undefined;
   }
   return undefined;
@@ -40,7 +40,7 @@ export function readTextField(
 export function sanitizeDocId(value: unknown): string {
   const text = sanitizeText(value, 120);
   if (!text) {
-    return createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex');
+    return createHash("sha256").update(`${Date.now()}-${Math.random()}`).digest("hex");
   }
-  return text.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
+  return text.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
 }

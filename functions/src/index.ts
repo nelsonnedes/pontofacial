@@ -1,14 +1,14 @@
-import { onCall, HttpsError, onRequest, type CallableOptions, type HttpsOptions } from 'firebase-functions/v2/https';
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
-import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { setGlobalOptions } from 'firebase-functions/v2';
-import { defineSecret } from 'firebase-functions/params';
-import * as admin from 'firebase-admin';
-import { createSocket } from 'dgram';
-import { createHash, timingSafeEqual } from 'crypto';
+import { onCall, HttpsError, onRequest, type CallableOptions, type HttpsOptions } from "firebase-functions/v2/https";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { setGlobalOptions } from "firebase-functions/v2";
+import { defineSecret } from "firebase-functions/params";
+import * as admin from "firebase-admin";
+import { createSocket } from "dgram";
+import { createHash, timingSafeEqual } from "crypto";
 
 // Configurar região global
-setGlobalOptions({ region: 'us-east1' });
+setGlobalOptions({ region: "us-east1" });
 
 // Inicializar Firebase Admin
 admin.initializeApp();
@@ -1214,19 +1214,19 @@ function sanitizePointMetadata(value: unknown): Record<string, unknown> {
 
   const facialRecognition = isPlainObject(value.facialRecognition)
     ? {
-        similarity: Number(value.facialRecognition.similarity) || null,
-        userName: sanitizeText(value.facialRecognition.userName, 160) || null,
-        method: sanitizeText(value.facialRecognition.method, 80) || null,
-        confidence: Number(value.facialRecognition.confidence) || null,
-        securityLevel: sanitizeText(value.facialRecognition.securityLevel, 80) || null
-      }
+      similarity: Number(value.facialRecognition.similarity) || null,
+      userName: sanitizeText(value.facialRecognition.userName, 160) || null,
+      method: sanitizeText(value.facialRecognition.method, 80) || null,
+      confidence: Number(value.facialRecognition.confidence) || null,
+      securityLevel: sanitizeText(value.facialRecognition.securityLevel, 80) || null
+    }
     : undefined;
 
   const geofenceValidation = isPlainObject(value.geofenceValidation)
     ? {
-        isValid: value.geofenceValidation.isValid === true,
-        message: sanitizeText(value.geofenceValidation.message, 300) || null
-      }
+      isValid: value.geofenceValidation.isValid === true,
+      message: sanitizeText(value.geofenceValidation.message, 300) || null
+    }
     : undefined;
 
   return {
@@ -1670,20 +1670,20 @@ export const setAdminClaims = onCall(CALLABLE_SECURITY_OPTIONS, async (request) 
   try {
     // Verificar se o usuário está autenticado
     if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Usuário não autenticado');
+      throw new HttpsError("unauthenticated", "Usuário não autenticado");
     }
 
     if (request.auth.token.admin !== true) {
       throw new HttpsError(
-        'permission-denied',
-        'Apenas administradores podem definir claims de administrador'
+        "permission-denied",
+        "Apenas administradores podem definir claims de administrador"
       );
     }
 
     const { email } = request.data;
     
     if (!email) {
-      throw new HttpsError('invalid-argument', 'Email é obrigatório');
+      throw new HttpsError("invalid-argument", "Email é obrigatório");
     }
 
     // Buscar usuário pelo email
@@ -1709,8 +1709,8 @@ export const setAdminClaims = onCall(CALLABLE_SECURITY_OPTIONS, async (request) 
       throw error;
     }
 
-    console.error('Erro ao definir claims de admin:', error);
-    throw new HttpsError('internal', 'Erro ao definir claims de administrador');
+    console.error("Erro ao definir claims de admin:", error);
+    throw new HttpsError("internal", "Erro ao definir claims de administrador");
   }
 });
 
@@ -2579,7 +2579,7 @@ export const auditTimeRecord = onDocumentCreated(
     const recordId = event.params.recordId;
 
     if (!recordData) {
-      console.error('Dados do registro não encontrados');
+      console.error("Dados do registro não encontrados");
       return;
     }
 
@@ -2999,58 +2999,58 @@ export const timeRecordWebhook = onRequest(WEBHOOK_REQUEST_OPTIONS, async (req, 
 
     // Processar diferentes tipos de ação
     switch (sanitizedAction) {
-      case "sync_employee":
-        {
-          const employeeData = sanitizeWebhookEmployeeData(data);
-          await db.collection("employees").doc(String(employeeData.id)).set(employeeData, { merge: true });
-        }
-        break;
+    case "sync_employee":
+      {
+        const employeeData = sanitizeWebhookEmployeeData(data);
+        await db.collection("employees").doc(String(employeeData.id)).set(employeeData, { merge: true });
+      }
+      break;
       
-      case "export_records":
-        {
-          if (!isPlainObject(data)) {
-            throw new HttpsError("invalid-argument", "Payload de exportação inválido");
-          }
+    case "export_records":
+    {
+      if (!isPlainObject(data)) {
+        throw new HttpsError("invalid-argument", "Payload de exportação inválido");
+      }
 
-          const userId = sanitizeText(data.userId, 128);
-          const startTimestamp = Date.parse(String(data.startDate || ""));
-          const endTimestamp = Date.parse(String(data.endDate || ""));
+      const userId = sanitizeText(data.userId, 128);
+      const startTimestamp = Date.parse(String(data.startDate || ""));
+      const endTimestamp = Date.parse(String(data.endDate || ""));
 
-          if (!userId || !Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp)) {
-            throw new HttpsError("invalid-argument", "Parâmetros obrigatórios: userId, startDate, endDate");
-          }
+      if (!userId || !Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp)) {
+        throw new HttpsError("invalid-argument", "Parâmetros obrigatórios: userId, startDate, endDate");
+      }
 
-          const records = await db
-            .collection("timeRecords")
-            .where("userId", "==", userId)
-            .where("timestamp", ">=", startTimestamp)
-            .where("timestamp", "<=", endTimestamp)
-          .get();
+      const records = await db
+        .collection("timeRecords")
+        .where("userId", "==", userId)
+        .where("timestamp", ">=", startTimestamp)
+        .where("timestamp", "<=", endTimestamp)
+        .get();
 
-          res.json({
-            success: true,
-            records: records.docs.map(doc => {
-              const record = doc.data();
-              return {
-                id: doc.id,
-                userId: record.userId,
-                type: record.type,
-                timestamp: record.timestamp,
-                dataHoraTZ: record.dataHoraTZ,
-                nsr: record.nsr,
-                status: record.status,
-                geofence: record.geofence,
-                hasPhotoEvidence: record.hasPhotoEvidence === true,
-                hasFacialRecognition: record.hasFacialRecognition === true
-              };
-            })
-          });
-          return;
-        }
+      res.json({
+        success: true,
+        records: records.docs.map(doc => {
+          const record = doc.data();
+          return {
+            id: doc.id,
+            userId: record.userId,
+            type: record.type,
+            timestamp: record.timestamp,
+            dataHoraTZ: record.dataHoraTZ,
+            nsr: record.nsr,
+            status: record.status,
+            geofence: record.geofence,
+            hasPhotoEvidence: record.hasPhotoEvidence === true,
+            hasFacialRecognition: record.hasFacialRecognition === true
+          };
+        })
+      });
+      return;
+    }
       
-      default:
-        res.status(400).json({ error: "Ação não reconhecida" });
-        return;
+    default:
+      res.status(400).json({ error: "Ação não reconhecida" });
+      return;
     }
 
     res.json({ success: true, message: "Webhook processado com sucesso" });
@@ -3071,14 +3071,14 @@ async function generateAFDContent(empresaData: any, marcacoes: any[]): Promise<s
   const totalNSR = 2 + marcacoes.length; // cabeçalho + marcações + rodapé
   const startNSR = await reserveNSR(totalNSR);
   let offset = 0;
-  lines.push(`1${(startNSR + offset++).toString().padStart(9, '0')}${empresaData.cnpj.replace(/\D/g, '').padStart(14, '0')}${empresaData.razaoSocial.padEnd(150, ' ')}${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}`);
+  lines.push(`1${(startNSR + offset++).toString().padStart(9, "0")}${empresaData.cnpj.replace(/\D/g, "").padStart(14, "0")}${empresaData.razaoSocial.padEnd(150, " ")}${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}`);
   for (const marcacao of marcacoes) {
     const data = marcacao.data();
-    const dataHora = new Date(data.dataHoraTZ.toDate()).toISOString().slice(0, 19).replace(/[-:T]/g, '');
-    lines.push(`3${(startNSR + offset++).toString().padStart(9, '0')}${data.usuarioId.padEnd(12, ' ')}${dataHora}`);
+    const dataHora = new Date(data.dataHoraTZ.toDate()).toISOString().slice(0, 19).replace(/[-:T]/g, "");
+    lines.push(`3${(startNSR + offset++).toString().padStart(9, "0")}${data.usuarioId.padEnd(12, " ")}${dataHora}`);
   }
-  lines.push(`9${(startNSR + offset).toString().padStart(9, '0')}${lines.length.toString().padStart(9, '0')}`);
-  return lines.join('\r\n');
+  lines.push(`9${(startNSR + offset).toString().padStart(9, "0")}${lines.length.toString().padStart(9, "0")}`);
+  return lines.join("\r\n");
 }
 
 // Função auxiliar para obter próximo NSR (único ponto) — mantida para API externa e testes
@@ -3090,7 +3090,7 @@ export async function getNextNSR(): Promise<number> {
 // P1-1: Reserva atômica de bloco de NSR — evita N transações e duplicatas sob concorrência
 async function reserveNSR(count: number): Promise<number> {
   if (count <= 0) throw new HttpsError("invalid-argument", "count NSR inválido");
-  const nsrDoc = db.collection('sequences').doc('nsr');
+  const nsrDoc = db.collection("sequences").doc("nsr");
   return db.runTransaction(async (transaction) => {
     const doc = await transaction.get(nsrDoc);
     const currentNSR = doc.exists ? (doc.data()?.value || 0) : 0;
