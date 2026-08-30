@@ -35,7 +35,7 @@ const DETECTION_INTERVAL = 1000; // 1 segundo
 const STABILIZATION_TIMEOUT = 5000; // 5 segundos
 
 interface CameraPanelProps {
-  onPhotoCapture?: (blob: Blob, imageData: ImageData, faceEmbedding?: FaceEmbedding) => void;
+  onPhotoCapture?: (blob: Blob, imageData: ImageData, faceEmbedding?: any) => void;
   onError?: (error: string) => void;
   onFaceDetected?: (faceCount: number) => void;
   className?: string;
