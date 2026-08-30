@@ -1,4 +1,8 @@
-// Sistema de Horários e Tolerâncias
+/**
+ * @deprecated P2-4 — Use src/types/schedule.ts (ScheduleType enum) ou packages/core-rules/src/compute.ts (calcDia).
+ * Mantido por compat com HRManagement/ScheduleConfiguration. Será removido em P3 (unificar em core-rules).
+ */
+// Sistema de Horários e Tolerâncias — DEPRECATED
 
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Domingo, 1 = Segunda, etc.
 

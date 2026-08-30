@@ -1,9 +1,8 @@
 'use client';
-
 /**
- * 🎯 SISTEMA MULTI-USUÁRIO DE RECONHECIMENTO FACIAL
- * Identifica automaticamente entre todos os funcionários cadastrados
- * Resolve confusão entre funcionários com rostos similares
+ * @deprecated P2-2 — Use hooks/useMultiUserRecognition (primário, com cache 1h + employees).
+ * Mantido por compat para hooks/useFaceEmbeddings. P1-7 já unificou alias; este lib será removido em P3.
+ * Bug fix: collection agora 'employees' (primária) com fallback 'usuarios' legado.
  */
 
 import { collection, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
@@ -504,8 +503,11 @@ export class MultiUserFaceRecognition {
     console.log('🔄 Atualizando cache de funcionários...');
 
     try {
-      const usersCollection = collection(db, 'usuarios');
-      const querySnapshot = await getDocs(usersCollection);
+      // P2-2 fix: primária 'employees' (P1-7 alias), fallback 'usuarios' legado
+      let querySnapshot = await getDocs(collection(db, 'employees'));
+      if (querySnapshot.empty) {
+        querySnapshot = await getDocs(collection(db, 'usuarios'));
+      }
       
       this.employeeCache.clear();
       

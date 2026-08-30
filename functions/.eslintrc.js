@@ -6,19 +6,19 @@ module.exports = {
   },
   extends: [
     "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
   ],
+  parser: "@typescript-eslint/parser",
   parserOptions: {
-    ecmaVersion: 2018,
+    ecmaVersion: 2022,
     sourceType: "module",
   },
   ignorePatterns: [
     "/lib/**/*", // Ignore built files.
-    "/src/**/*", // Ignore TypeScript source files
   ],
   rules: {
     "quotes": ["error", "double"],
     "indent": ["error", 2],
     "no-undef": "off",
-    "no-unused-vars": "off",
   },
 };

@@ -77,3 +77,7 @@ public/face_recognition_model*
 # opencode local config (contém secrets) — ver docs/PLANO_MELHORIAS.md
 opencode.json
 
+
+# Functions build output — gerado via tsc, não commitar (predeploy build)
+functions/lib/
+
