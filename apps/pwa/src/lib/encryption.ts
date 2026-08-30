@@ -218,10 +218,8 @@ export function generateEmbeddingHash(embedding: OptimizedFaceEmbedding): string
 }
 
 /**
- * Comparar embeddings para verificar similaridade
- * @param embedding1 - Primeiro embedding
- * @param embedding2 - Segundo embedding  
- * @returns Score de similaridade (0-1)
+ * Comparar embeddings — P1-4 unificado com OptimizedFaceRecognition.compareFaces:386
+ * Cosine 0.4 + Euclidean 0.6 com penalidade >0.6 (evita divergência treinamento vs inferência)
  */
 export function compareEmbeddings(
   embedding1: OptimizedFaceEmbedding, 
@@ -231,42 +229,49 @@ export function compareEmbeddings(
     if (!validateEmbedding(embedding1) || !validateEmbedding(embedding2)) {
       return 0;
     }
-    
-    if (embedding1.descriptor.length !== embedding2.descriptor.length) {
-      return 0;
-    }
-    
-    // Calcular distância euclidiana
-    let sumSquaredDiffs = 0;
-    for (let i = 0; i < embedding1.descriptor.length; i++) {
-      const diff = embedding1.descriptor[i] - embedding2.descriptor[i];
+    const a = embedding1.descriptor;
+    const b = embedding2.descriptor;
+    const minLength = Math.min(a.length, b.length);
+    if (minLength === 0) return 0;
+    let dot = 0, magA = 0, magB = 0, sumSquaredDiffs = 0;
+    for (let i = 0; i < minLength; i++) {
+      dot += a[i] * b[i];
+      magA += a[i] * a[i];
+      magB += b[i] * b[i];
+      const diff = a[i] - b[i];
       sumSquaredDiffs += diff * diff;
     }
-    
+    magA = Math.sqrt(magA);
+    magB = Math.sqrt(magB);
+    if (magA === 0 || magB === 0) return 0;
+    const cosine = dot / (magA * magB);
+    const mappedCosine = Math.max(0, Math.min(1, (cosine + 1) / 2));
     const euclideanDistance = Math.sqrt(sumSquaredDiffs);
-    
-    // Converter distância para score de similaridade (0-1)
-    // Assumindo que distâncias < 0.6 são consideradas matches
-    const maxDistance = 0.6;
-    const similarity = Math.max(0, 1 - (euclideanDistance / maxDistance));
-    
-    return similarity;
-    
+    const mappedEuclidean = Math.max(0, 1 - euclideanDistance / 0.7);
+    if (euclideanDistance > 0.6) {
+      return Math.min(mappedCosine, mappedEuclidean) * 0.8;
+    }
+    return mappedCosine * 0.4 + mappedEuclidean * 0.6;
   } catch (error) {
     console.error('❌ Erro ao comparar embeddings:', error);
     return 0;
   }
 }
+// DEPRECATED: encryptEmbedding/decryptEmbedding XOR pfb:v1 mantido apenas para compat compat com dados legados.
+// Novos dados devem usar encryptLocalData/decryptLocalData (AES-GCM + cache).
 
 /**
- * 🔒 AES-GCM 256-bit Web Crypto API Encryption
- * derives a secure unique key per user based on userId
+ * 🔒 AES-GCM 256-bit Web Crypto API Encryption — P1-4 cache CryptoKey (Menos é Mais)
+ * Evita re-derivar PBKDF2 100k a cada chamada; cache por userId+saltSeed.
  */
+const aesKeyCache = new Map<string, CryptoKey>();
 async function getOrDeriveAESKey(userId: string): Promise<CryptoKey> {
-  const enc = new TextEncoder();
   const configuredKey = (process.env.NEXT_PUBLIC_ENCRYPTION_KEY || '').trim();
   const saltSeed = configuredKey || 'ponto-facial-default-salt-value-for-offline-gcm';
-  
+  const cacheKey = `${userId}::${saltSeed}`;
+  const cached = aesKeyCache.get(cacheKey);
+  if (cached) return cached;
+  const enc = new TextEncoder();
   const baseKey = await crypto.subtle.importKey(
     "raw",
     enc.encode(userId + saltSeed),
@@ -274,8 +279,7 @@ async function getOrDeriveAESKey(userId: string): Promise<CryptoKey> {
     false,
     ["deriveKey"]
   );
-  
-  return crypto.subtle.deriveKey(
+  const derived = await crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
       salt: enc.encode("ponto-facial-fixed-salt-gcm-2026"),
@@ -287,7 +291,12 @@ async function getOrDeriveAESKey(userId: string): Promise<CryptoKey> {
     false,
     ["encrypt", "decrypt"]
   );
+  aesKeyCache.set(cacheKey, derived);
+  return derived;
 }
+// Export para testes/invalidação
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function __clearAESKeyCacheForTests(): void { aesKeyCache.clear(); }
 
 export async function encryptLocalData(plainText: string, userId: string): Promise<{ iv: string; ciphertext: string }> {
   try {

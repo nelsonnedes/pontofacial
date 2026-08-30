@@ -1,5 +1,8 @@
 'use client';
-
+/**
+ * @deprecated P1-5 — Use useOfflineTimeRecords / queueManager diretamente.
+ * Mantido por compatibilidade; polling reduzido para 30s e lógica DRY centralizada em offline-queue.ts:159.
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { queueManager, OfflineTimeRecord } from '@/lib/offline-queue';
 import { useSyncStatus } from './useSyncStatus';
@@ -171,16 +174,13 @@ export function useOfflineSync() {
     }
   }, [isOnline, isSyncing, updateStats]); // ✅ CORREÇÃO: Incluir updateStats nas dependências
   
-  // Atualizar estatísticas periodicamente - separar em useEffect próprio
+  // P1-5: intervalo aumentado para 30s — queueManager 5s é a fonte autoritativa
   useEffect(() => {
     const interval = setInterval(() => {
       updateStats();
-    }, 10000); // A cada 10 segundos
-    
-    return () => {
-      clearInterval(interval);
-    };
-  }, []); // Sem dependências - executar apenas uma vez
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Listener para mudanças de conectividade
   useEffect(() => {

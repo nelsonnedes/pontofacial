@@ -122,18 +122,17 @@ export function useOfflineTimeRecords(): UseOfflineTimeRecordsReturn {
     loadInitialData();
   }, []);
 
-  // Atualizar estatísticas periodicamente
+  // P1-5 DRY: Polling centralizado em offline-queue.ts:159 (queueManager.startProcessing 5s).
+  // Hook apenas atualiza stats a cada 30s (menos carga) — evita 3 pollings concorrentes (10s+10s+5s).
   useEffect(() => {
     const interval = setInterval(() => {
-      // Verificar estado atual no momento da execução para evitar dependência circular
       if (!isLoading) {
         getQueueStats();
         getUnsyncedRecords();
       }
-    }, 10000); // A cada 10 segundos
-
+    }, 30000);
     return () => clearInterval(interval);
-  }, []); // Remover isLoading da dependência para evitar loop infinito
+  }, []);
 
   // Carregar dados iniciais
   const loadInitialData = async () => {

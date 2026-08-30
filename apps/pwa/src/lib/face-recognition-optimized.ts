@@ -6,6 +6,7 @@ import {
   getBiometricRuntimeBlockers,
   isStrictProduction
 } from '@/lib/production-guardrails';
+import { BIOMETRIC_THRESHOLDS } from '@/lib/biometric/threshold';
 
 export function normalizeEmbeddingDescriptor(
   descriptor: Float32Array | number[] | null | undefined,
@@ -436,7 +437,7 @@ class OptimizedFaceRecognition {
   isSamePerson(
     first: OptimizedFaceEmbedding,
     second: OptimizedFaceEmbedding,
-    threshold = 0.58
+    threshold: number = BIOMETRIC_THRESHOLDS.SAME_PERSON
   ): boolean {
     const similarity = this.compareFaces(first, second);
     return similarity >= threshold;

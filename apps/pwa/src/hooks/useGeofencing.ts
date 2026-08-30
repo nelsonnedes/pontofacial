@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { collection, addDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
+import { calculateDistance as libCalculateDistance, hasGoodAccuracy } from '@/lib/geofencing';
 
 interface GeofenceConfig {
   latitude: number;
@@ -146,22 +147,14 @@ export function useGeofencing() {
     loadActiveFence();
   }, [loadActiveFence]);
 
-  // Calcular distância entre dois pontos (Haversine)
+  // P1-6: DRY — Haversine centralizado em lib/geofencing.ts:64
   const calculateDistance = useCallback((
     lat1: number, 
     lon1: number, 
     lat2: number, 
     lon2: number
   ): number => {
-    const R = 6371000; // Raio da Terra em metros
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Distância em metros
+    return libCalculateDistance({ latitude: lat1, longitude: lon1 }, { latitude: lat2, longitude: lon2 });
   }, []);
 
   // Registrar violação de geofencing
@@ -205,6 +198,18 @@ export function useGeofencing() {
     };
 
     if (!activeFence) {
+      const allowWithoutFence = process.env.NEXT_PUBLIC_ALLOW_NO_GEOFENCE === "true";
+      if (allowWithoutFence) {
+        console.warn('⚠️ Nenhuma cerca ativa — fallback permitido por NEXT_PUBLIC_ALLOW_NO_GEOFENCE');
+        setState({
+          currentLocation: location,
+          isInsideFence: true,
+          isLoadingLocation: false,
+          locationError: null,
+          distanceFromFence: null,
+        });
+        return;
+      }
       console.warn('⚠️ Nenhuma cerca ativa - bloqueando marcação');
       setState({
         currentLocation: location,
@@ -332,6 +337,10 @@ export function useGeofencing() {
     }
 
     if (!activeFence) {
+      const allowWithoutFence = process.env.NEXT_PUBLIC_ALLOW_NO_GEOFENCE === "true";
+      if (allowWithoutFence) {
+        return { allowed: true };
+      }
       return {
         allowed: false,
         reason: 'Nenhuma cerca ativa configurada'
@@ -345,7 +354,7 @@ export function useGeofencing() {
       };
     }
 
-    if (currentLocation.accuracy > 100) {
+    if (!hasGoodAccuracy(currentLocation)) {
       return {
         allowed: false,
         reason: `Precisão de GPS insuficiente (${Math.round(currentLocation.accuracy)}m)`

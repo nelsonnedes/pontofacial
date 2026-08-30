@@ -73,3 +73,7 @@ public/face_recognition_model*
 # PWA Build artifacts
 /apps/pwa/out/
 /apps/pwa/.next/
+
+# opencode local config (contém secrets) — ver docs/PLANO_MELHORIAS.md
+opencode.json
+

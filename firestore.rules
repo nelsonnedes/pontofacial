@@ -85,10 +85,9 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
     }
 
-    // Empresas e estabelecimentos ainda podem ser lidos por usuarios autenticados
-    // para geofence/configuracao operacional. Escrita permanece apenas admin.
+    // P0-5: Leitura restrita por permissão — evita vazamento CNPJ/coords para qualquer autenticado
     match /empresas/{empresaId} {
-      allow read: if isSignedIn();
+      allow read: if hasAnyPermission(['admin:companies', 'admin:employees', 'admin:users', 'admin:records', 'admin:dashboard', 'admin:geofences']) || hasAnyPermission(['app:mark-point', 'app:dashboard', 'app:history']);
       allow write: if hasPermission('admin:companies');
 
       match /funcionarios/{userId} {
@@ -98,12 +97,12 @@ service cloud.firestore {
     }
 
     match /estabelecimentos/{estabelecimentoId} {
-      allow read: if isSignedIn();
+      allow read: if hasAnyPermission(['admin:companies', 'admin:employees', 'admin:users', 'admin:records', 'admin:dashboard']) || hasAnyPermission(['app:mark-point', 'app:dashboard']);
       allow write: if hasPermission('admin:companies');
     }
 
     match /usuarios/{userId} {
-      allow read: if isSignedIn();
+      allow read: if hasAnyPermission(['admin:users', 'admin:employees']) || isOwner(userId);
       allow create: if hasPermission('admin:users') || (isOwner(userId) && safeUserRoleOnCreate());
       allow update: if hasPermission('admin:users') || (
         isOwner(userId) &&
@@ -143,17 +142,17 @@ service cloud.firestore {
     }
 
     match /marcacoes/{marcacaoId} {
-      // Registros de ponto devem ser criados apenas pelo backend autoritativo.
+      // P0-4: Histórico imutável — apenas backend (Admin SDK) escreve; cliente não pode criar/alterar.
       allow create: if false;
       allow read: if hasAnyPermission(['admin:dashboard', 'admin:records', 'admin:reports']) || resourceOwnerMatches();
-      allow update, delete: if hasPermission('admin:records');
+      allow update, delete: if false;
     }
 
     match /timeRecords/{recordId} {
-      // Registros de ponto devem ser criados apenas pelo backend autoritativo.
+      // P0-4: Histórico imutável — apenas backend (Admin SDK) escreve.
       allow create: if false;
       allow read: if hasAnyPermission(['admin:dashboard', 'admin:records', 'admin:reports']) || resourceOwnerMatches();
-      allow update, delete: if hasPermission('admin:records');
+      allow update, delete: if false;
     }
 
     match /sequences/{sequenceId} {
@@ -210,7 +209,7 @@ service cloud.firestore {
     }
 
     match /geofences/{geofenceId} {
-      allow read: if isSignedIn();
+      allow read: if hasAnyPermission(['admin:geofences', 'admin:records', 'admin:dashboard']) || hasPermission('app:mark-point');
       allow write: if hasPermission('admin:geofences');
     }
 

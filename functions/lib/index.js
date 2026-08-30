@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.timeRecordWebhook = exports.signPdf = exports.signAfd = exports.cleanupOldRecords = exports.auditTimeRecord = exports.signTimeRecord = exports.getLegalSignatureStatus = exports.timeNtp = exports.getNTPTime = exports.markPoint = exports.deleteUserProfile = exports.updateUserProfile = exports.createUserProfile = exports.setAdminClaims = void 0;
+exports.getNextNSR = getNextNSR;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
@@ -14,12 +15,29 @@ const crypto_1 = require("crypto");
 // Inicializar Firebase Admin
 admin.initializeApp();
 const db = admin.firestore();
-const ENFORCE_APP_CHECK = process.env.ENFORCE_APP_CHECK === "true";
-const CONSUME_APP_CHECK_TOKEN = process.env.CONSUME_APP_CHECK_TOKEN === "true";
+// Rate-limit in-memory para kiosk (P0-3) — Menos é Mais: sem dependência externa
+const KIOSK_RATE_LIMIT = new Map();
+const KIOSK_RATE_LIMIT_MAX = 10;
+const KIOSK_RATE_LIMIT_WINDOW_MS = 60000;
+function checkKioskRateLimit(kioskUid) {
+    const now = Date.now();
+    const entry = KIOSK_RATE_LIMIT.get(kioskUid);
+    if (!entry || now - entry.windowStart > KIOSK_RATE_LIMIT_WINDOW_MS) {
+        KIOSK_RATE_LIMIT.set(kioskUid, { count: 1, windowStart: now });
+        return;
+    }
+    if (entry.count >= KIOSK_RATE_LIMIT_MAX) {
+        throw new https_1.HttpsError("resource-exhausted", "Limite de marcações via portaria atingido (10/min). Aguarde.");
+    }
+    entry.count++;
+}
 const RELEASE_PROFILE = (process.env.PONTO_FACIAL_RELEASE_PROFILE || "").toLowerCase();
+const ENFORCE_APP_CHECK = process.env.ENFORCE_APP_CHECK === "true" || RELEASE_PROFILE === "production";
+const CONSUME_APP_CHECK_TOKEN = process.env.CONSUME_APP_CHECK_TOKEN === "true" || ENFORCE_APP_CHECK;
 const REQUIRE_LEGAL_ACCEPTANCE_FOR_FACIAL = process.env.REQUIRE_LEGAL_ACCEPTANCE_FOR_FACIAL === "true" ||
     RELEASE_PROFILE === "production";
-const REQUIRE_SERVER_BIOMETRIC_VERIFICATION = process.env.REQUIRE_SERVER_BIOMETRIC_VERIFICATION === "true";
+const REQUIRE_SERVER_BIOMETRIC_VERIFICATION = process.env.REQUIRE_SERVER_BIOMETRIC_VERIFICATION === "true" ||
+    RELEASE_PROFILE === "production";
 const REQUIRED_PRIVACY_NOTICE_VERSION = process.env.REQUIRED_PRIVACY_NOTICE_VERSION ||
     process.env.NEXT_PUBLIC_REQUIRED_PRIVACY_NOTICE_VERSION ||
     "2026-05-24-privacy-notice-v1";
@@ -159,7 +177,7 @@ function setCorsHeaders(req, res, methods = "GET, POST, OPTIONS") {
     }
     res.set("Vary", "Origin");
     res.set("Access-Control-Allow-Methods", methods);
-    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck, X-Webhook-Secret");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck, X-Webhook-Secret, X-Webhook-Timestamp, X-Webhook-Nonce");
 }
 function handleCorsPreflight(req, res, methods = "GET, POST, OPTIONS") {
     setCorsHeaders(req, res, methods);
@@ -856,7 +874,7 @@ function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return earthRadiusMeters * c;
 }
-async function validateServerGeofence(location) {
+async function validateServerGeofence(location, tenantId) {
     var _a, _b, _c, _d, _e;
     if (location.accuracy > 100) {
         throw new https_1.HttpsError("failed-precondition", `Precisão de GPS insuficiente (${Math.round(location.accuracy)}m)`);
@@ -879,6 +897,15 @@ async function validateServerGeofence(location) {
         const empresaId = sanitizeScalarText(data.empresaId || data.companyId || company.empresaId || company.id, 128);
         const companyId = sanitizeScalarText(data.companyId || data.empresaId || company.companyId || company.id, 128);
         const companyName = sanitizeScalarText(data.companyName || data.empresaNome || company.companyName || company.nomeEmpresa, 160);
+        if (tenantId) {
+            const fenceTenant = empresaId || companyId;
+            if (fenceTenant && fenceTenant !== tenantId) {
+                continue;
+            }
+            if (!fenceTenant) {
+                continue;
+            }
+        }
         if (!Number.isFinite(latitude) ||
             !Number.isFinite(longitude) ||
             !Number.isFinite(radius) ||
@@ -892,7 +919,9 @@ async function validateServerGeofence(location) {
         }
     }
     if (!nearest) {
-        throw new https_1.HttpsError("failed-precondition", "Nenhuma cerca ativa válida configurada");
+        throw new https_1.HttpsError("failed-precondition", tenantId
+            ? "Nenhuma cerca ativa válida configurada para esta empresa"
+            : "Nenhuma cerca ativa válida configurada");
     }
     if (nearest.distanceMeters > nearest.radius) {
         throw new https_1.HttpsError("permission-denied", `Funcionário fora da área permitida (${Math.round(nearest.distanceMeters)}m)`);
@@ -900,7 +929,7 @@ async function validateServerGeofence(location) {
     return nearest;
 }
 async function resolveAuthorizedPointSubject(auth, requestedUserId) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const actorUid = auth.uid;
     const actorEmail = (_b = sanitizeText((_a = auth.token) === null || _a === void 0 ? void 0 : _a.email, 320)) === null || _b === void 0 ? void 0 : _b.toLowerCase();
     const isAdminToken = ((_c = auth.token) === null || _c === void 0 ? void 0 : _c.admin) === true;
@@ -928,6 +957,11 @@ async function resolveAuthorizedPointSubject(auth, requestedUserId) {
         return Object.assign({ userId: requestedUserId }, (linkedAuthUid ? { authUid: linkedAuthUid } : {}));
     }
     if (isKioskToken) {
+        const kioskPermissions = Array.isArray((_j = auth.token) === null || _j === void 0 ? void 0 : _j.permissions) ? auth.token.permissions : [];
+        if (!kioskPermissions.includes("app:mark-point") && !kioskPermissions.includes("admin:records")) {
+            throw new https_1.HttpsError("permission-denied", "Perfil de portaria sem permissão app:mark-point");
+        }
+        checkKioskRateLimit(actorUid);
         const subjectEmpresaId = sanitizeText((subjectData === null || subjectData === void 0 ? void 0 : subjectData.empresaId) || (subjectData === null || subjectData === void 0 ? void 0 : subjectData.companyId), 128);
         if (!subjectData) {
             throw new https_1.HttpsError("not-found", "Funcionário não encontrado para marcação via portaria");
@@ -1322,13 +1356,14 @@ exports.markPoint = (0, https_1.onCall)(CALLABLE_SECURITY_OPTIONS, async (reques
         throw new https_1.HttpsError("invalid-argument", "Localização é obrigatória para registrar ponto");
     }
     const subject = await resolveAuthorizedPointSubject(request.auth, requestedUserId);
-    const geofenceDecision = await validateServerGeofence(location);
     const deviceInfo = sanitizeDeviceInfo(data.deviceInfo);
     const metadata = sanitizePointMetadata(data.metadata);
     const facialRecognition = isPlainObject(metadata.facialRecognition)
         ? metadata.facialRecognition
         : null;
     const subjectProfile = await resolvePointSubjectProfile(requestedUserId, request.auth, sanitizeText(facialRecognition === null || facialRecognition === void 0 ? void 0 : facialRecognition.userName, 160));
+    const tentativeTenantId = subjectProfile.empresaId || subjectProfile.companyId;
+    const geofenceDecision = await validateServerGeofence(location, tentativeTenantId);
     const companyContext = await resolveCompanyContext(subjectProfile, geofenceDecision);
     const employeeId = subjectProfile.employeeId || requestedUserId;
     const employeeAuthUid = subjectProfile.authUid ||
@@ -2002,22 +2037,37 @@ exports.timeRecordWebhook = (0, https_1.onRequest)(WEBHOOK_REQUEST_OPTIONS, asyn
         await requireAppCheckRequest(req);
         const configuredSecret = getTimeRecordWebhookSecret();
         const providedSecret = req.headers["x-webhook-secret"];
-        if (!configuredSecret || providedSecret !== configuredSecret) {
+        const webhookTimestamp = req.headers["x-webhook-timestamp"];
+        const webhookNonce = req.headers["x-webhook-nonce"];
+        if (!configuredSecret || typeof providedSecret !== "string" || !providedSecret) {
             throw new https_1.HttpsError("permission-denied", "Webhook sem segredo válido");
+        }
+        if (webhookTimestamp) {
+            const ts = Number(webhookTimestamp);
+            if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > 5 * 60 * 1000) {
+                throw new https_1.HttpsError("permission-denied", "Timestamp do webhook fora da janela permitida (5min)");
+            }
+        }
+        if (webhookNonce) {
+            const nonceCheck = await db.collection("webhookLogs").where("nonce", "==", webhookNonce).limit(1).get();
+            if (!nonceCheck.empty) {
+                throw new https_1.HttpsError("already-exists", "Nonce já utilizado — possível replay");
+            }
+        }
+        {
+            const a = Buffer.from(String(providedSecret));
+            const b = Buffer.from(configuredSecret);
+            if (a.length !== b.length || !(0, crypto_1.timingSafeEqual)(a, b)) {
+                throw new https_1.HttpsError("permission-denied", "Webhook sem segredo válido");
+            }
         }
         const { action, data } = req.body;
         const sanitizedAction = sanitizeText(action, 80);
         if (!sanitizedAction) {
             throw new https_1.HttpsError("invalid-argument", "Ação do webhook obrigatória");
         }
-        // Log do webhook sem PII sensível ou payloads biométricos
-        await db.collection("webhookLogs").add({
-            action: sanitizedAction,
-            data: redactWebhookPayload(data),
-            timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            source: req.headers["user-agent"] || "unknown",
-            ip: req.ip
-        });
+        // Log do webhook sem PII — ip hasheado, sem biométrico
+        await db.collection("webhookLogs").add(Object.assign(Object.assign({ action: sanitizedAction, data: redactWebhookPayload(data), timestamp: admin.firestore.FieldValue.serverTimestamp(), source: req.headers["user-agent"] || "unknown", ipHash: typeof req.ip === "string" ? (0, crypto_1.createHash)("sha256").update(req.ip).digest("hex").slice(0, 16) : "unknown" }, (webhookNonce ? { nonce: webhookNonce } : {})), (webhookTimestamp ? { webhookTimestamp: Number(webhookTimestamp) } : {})));
         // Processar diferentes tipos de ação
         switch (sanitizedAction) {
             case "sync_employee":
@@ -2078,34 +2128,38 @@ exports.timeRecordWebhook = (0, https_1.onRequest)(WEBHOOK_REQUEST_OPTIONS, asyn
         res.status(500).json({ error: "Erro interno do servidor" });
     }
 });
-// Função auxiliar para gerar conteúdo AFD
+// P1-1: AFD agora reserva bloco único de NSR — 1 transação vs N (Menos é Mais, sem race/gap)
 async function generateAFDContent(empresaData, marcacoes) {
     const lines = [];
-    // Registro tipo 1 - Cabeçalho
-    const nsr = await getNextNSR();
-    lines.push(`1${nsr.toString().padStart(9, '0')}${empresaData.cnpj.replace(/\D/g, '').padStart(14, '0')}${empresaData.razaoSocial.padEnd(150, ' ')}${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}`);
-    // Registros tipo 3 - Marcações
+    const totalNSR = 2 + marcacoes.length; // cabeçalho + marcações + rodapé
+    const startNSR = await reserveNSR(totalNSR);
+    let offset = 0;
+    lines.push(`1${(startNSR + offset++).toString().padStart(9, '0')}${empresaData.cnpj.replace(/\D/g, '').padStart(14, '0')}${empresaData.razaoSocial.padEnd(150, ' ')}${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}`);
     for (const marcacao of marcacoes) {
         const data = marcacao.data();
-        const nsrMarcacao = await getNextNSR();
         const dataHora = new Date(data.dataHoraTZ.toDate()).toISOString().slice(0, 19).replace(/[-:T]/g, '');
-        lines.push(`3${nsrMarcacao.toString().padStart(9, '0')}${data.usuarioId.padEnd(12, ' ')}${dataHora}`);
+        lines.push(`3${(startNSR + offset++).toString().padStart(9, '0')}${data.usuarioId.padEnd(12, ' ')}${dataHora}`);
     }
-    // Registro tipo 9 - Rodapé
-    const nsrRodape = await getNextNSR();
-    lines.push(`9${nsrRodape.toString().padStart(9, '0')}${lines.length.toString().padStart(9, '0')}`);
+    lines.push(`9${(startNSR + offset).toString().padStart(9, '0')}${lines.length.toString().padStart(9, '0')}`);
     return lines.join('\r\n');
 }
-// Função auxiliar para obter próximo NSR
+// Função auxiliar para obter próximo NSR (único ponto) — mantida para API externa e testes
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function getNextNSR() {
+    return reserveNSR(1);
+}
+// P1-1: Reserva atômica de bloco de NSR — evita N transações e duplicatas sob concorrência
+async function reserveNSR(count) {
+    if (count <= 0)
+        throw new https_1.HttpsError("invalid-argument", "count NSR inválido");
     const nsrDoc = db.collection('sequences').doc('nsr');
     return db.runTransaction(async (transaction) => {
         var _a;
         const doc = await transaction.get(nsrDoc);
-        const currentNSR = doc.exists ? ((_a = doc.data()) === null || _a === void 0 ? void 0 : _a.value) || 0 : 0;
-        const nextNSR = currentNSR + 1;
+        const currentNSR = doc.exists ? (((_a = doc.data()) === null || _a === void 0 ? void 0 : _a.value) || 0) : 0;
+        const nextNSR = currentNSR + count;
         transaction.set(nsrDoc, { value: nextNSR }, { merge: true });
-        return nextNSR;
+        return currentNSR + 1; // primeiro do bloco
     });
 }
 //# sourceMappingURL=index.js.map

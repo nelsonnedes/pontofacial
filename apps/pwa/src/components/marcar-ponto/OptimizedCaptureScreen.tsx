@@ -8,6 +8,7 @@ import { useGeofencing } from '@/hooks/useGeofencing';
 import { useOfflineTimeRecords } from '@/hooks/useOfflineTimeRecords';
 import { useScheduleManager } from '@/hooks/useScheduleManager';
 import type { OptimizedFaceEmbedding } from '@/lib/face-recognition-optimized';
+import { BIOMETRIC_THRESHOLDS } from '@/lib/biometric/threshold';
 import Link from 'next/link';
 import FaceOvalCamera from '@/components/shared/FaceOvalCamera';
 
@@ -385,9 +386,8 @@ function OptimizedCaptureScreenContent() {
         });
       }
       
-      // 🚨 VALIDAÇÃO CRÍTICA DE SEGURANÇA CORRIGIDA
-      // ✅ THRESHOLD SEGURO - Segurança vs Funcionalidade
-      const MARKET_STANDARD_THRESHOLD = 0.75; // 75% - Threshold seguro para produção
+      // P1-3: Threshold único DRY — fonte BIOMETRIC_POLICY (production-guardrails:50)
+      const MARKET_STANDARD_THRESHOLD = BIOMETRIC_THRESHOLDS.SECURE_MARK;
       
       const isValidUser = result.success && 
                          result.similarity && 

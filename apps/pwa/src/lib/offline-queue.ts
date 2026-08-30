@@ -155,7 +155,7 @@ export class OfflineQueueManager {
     }
   }
 
-  // Iniciar processamento automático
+  // P1-5: Fonte autoritativa única de polling (5s). Hooks apenas leem stats a cada 30s — evita 3 pollings concorrentes.
   startProcessing(): void {
     if (this.isProcessing) return;
     

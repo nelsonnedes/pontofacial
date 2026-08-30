@@ -174,7 +174,9 @@ describe('firestore.rules', () => {
     });
 
     await assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), 'geofences/main')));
-    await assertSucceeds(getDoc(doc(authedDb('user-a'), 'geofences/main')));
+    // P0-5: leitura agora exige permissao app:mark-point ou admin:geofences (menos é mais: DRY com token)
+    await assertFails(getDoc(doc(authedDb('user-a'), 'geofences/main')));
+    await assertSucceeds(getDoc(doc(authedDb('user-a', { permissions: ['app:mark-point'] }), 'geofences/main')));
     await assertFails(updateDoc(doc(authedDb('user-a'), 'geofences/main'), { radius: 120 }));
     await assertSucceeds(updateDoc(doc(adminDb(), 'geofences/main'), { radius: 120 }));
   });
