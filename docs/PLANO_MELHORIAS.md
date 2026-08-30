@@ -110,28 +110,37 @@ TimeRecord ──geofenceDecision──> Geofence | ──legalAcceptance──>
 | P3-7 | Emuladores incompletos + sem CI | `firebase.json:156` | `auth:9099/storage:9199/functions:5001/ui:4000` + `.github/workflows/ci.yml:1` | ✅ |
 | P3-8 | `storage.rules` spoofável | `storage.rules:19` | `image/(jpeg\|jpg\|png)` + `size>0` + `isValidTempFile` | ✅ |
 
-## FASE P4 — REFINAMENTOS
+## FASE P4 — REFINAMENTOS — ✅ CONCLUÍDA 2026-05-14
 
-| # | Item | Arquivo | Ganho |
+| # | Item | Arquivo | Ganho | Status |
 |---|------|---------|-------|
-| P4-1 | `reactStrictMode:false` | `next.config:6` | `true` |
-| P4-2 | `minimize:false` dev | `next.config:41` | Remover |
-| P4-3 | SW manual `v12` | `sw.js:4` | Workbox quando sair de `export` |
-| P4-4 | Rewrites 8 SPA | `firebase.json:10` | `**->/index.html` único |
+| P4-1 | `reactStrictMode:false` | `apps/pwa/next.config.js:6` | `true` — expõe leaks de câmera | ✅ |
+| P4-2 | `minimize:false` dev | `apps/pwa/next.config.js:47` | Removido — webpack decide | ✅ |
+| P4-3 | SW manual `v12` | `public/sw.js:1` | Documentado Workbox path para SSR futuro | ✅ |
+| P4-4 | Rewrites 8 SPA | `firebase.json:10` | Mantidos granulares para `output:export`+`trailingSlash:true`; TODO SSR → `**->/index.html` único | ✅ |
 
 ---
 
-## Verificação por Fase
+## Verificação por Fase — ✅ TODAS PASSAM
 ```bash
 pnpm lint && pnpm typecheck && pnpm test:rules && pnpm --filter functions build
+# P0: AppCheck + geofence tenant + kiosk + rules ✅
+# P1: NSR reserve + threshold + cache + DRY ✅
+# P2: split + point-type + camera + sanitize ✅
+# P3: build strict + eslint + coverage + emulators + CI ✅
+# P4: strictMode + minimize + SW + rewrites ✅
 ```
-Hoje `functions lint` é falso-verde `functions/.eslintrc.js:14` (`ignorePatterns` inclui `src`). Será corrigido em P2-6/P3-5.
+`functions lint` corrigido `functions/.eslintrc.js:14` (agora linta `src` com 0 errors).
 
-## Próximos Passos
-1. Sprint 1 P0 (esta fase) → travar segurança/LGPD + testes rules.
-2. Sprint 2 P1 → geofence/threshold/NSR.
-3. Sprint 3 P2 → modularizar + DRY.
-4. Sprint 4 P3 → CI + strict + coverage.
-5. Sprint 5 P4 → perf refinamentos.
+## Próximos Passos — ✅ CONCLUÍDO
+1. ✅ P0 Segurança/LGPD — commit 8696406
+2. ✅ P1 Confiabilidade — reserveNSR + threshold + cache
+3. ✅ P2 Arquitetura DRY — split + point-type + camera
+4. ✅ P3 Qualidade/Infra — CI + coverage + emulators
+5. ✅ P4 Refinamentos — strictMode + SW + rewrites
+
+**Branch:** `codex/production-hardening` → `origin/codex/production-hardening` — `e9017e7` (P3) + `a5c01a1` (P2) + `8696406` (P0/P1)
+**Histórico limpo:** `filter-branch` removeu `.next/out` (>100MB) — `.gitignore` + `functions/lib` ignorado
+**Para futura AI:** Ler `docs/PLANO_MELHORIAS.md:1` + `git log --oneline` com `file_path:linha` no body de cada commit — sem regressão.
 
 *Gerado em 2026-05-14 — Modo Especialista Ponto Facial — `docs/PLANO_MELHORIAS.md:1`*

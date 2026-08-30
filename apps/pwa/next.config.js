@@ -3,7 +3,8 @@ const nextConfig = {
   // Configuração para export estático (Firebase Hosting)
   output: 'export',
   trailingSlash: true,
-  reactStrictMode: false, 
+  // P4-1: StrictMode true expõe double-effect bugs em dev — Menos é Mais, sem esconder leaks de câmera
+  reactStrictMode: true, 
   
   // Imagens não otimizadas para export estático
   images: {
@@ -18,7 +19,8 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
 
-  // ✅ PWA: Configuração removida (não funciona com export estático)
+  // P4-3: PWA next-pwa removido — não funciona com output:export. SW manual em public/sw.js:4 (v12).
+  // Quando migrar para SSR (remover output:export), reativar next-pwa com Workbox: { runtimeCaching: [...] }
   
   // Desabilitar features que não funcionam com export estático
   experimental: {
@@ -44,11 +46,7 @@ const nextConfig = {
         zlib: false,
       };
 
-      // Configurações específicas para desenvolvimento
-      if (dev) {
-        config.optimization.minimize = false;
-      }
-      
+      // P4-2: Removido minimize:false — deixa webpack decidir (Menos é Mais, bundle otimizado até em dev)
       // Suprimir warnings específicos do face-api que não são críticos
       config.infrastructureLogging = {
         level: 'error',

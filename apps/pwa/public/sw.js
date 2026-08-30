@@ -1,5 +1,5 @@
-// Service Worker para Ponto Facial PWA
-// Versao: 1.0.5
+// Service Worker para Ponto Facial PWA — P4-3 manual (output:export não suporta next-pwa)
+// Versao: 1.0.5 — CACHE v12 — TODO P4 futuro: migrar para Workbox quando SSR (remover output:export)
 
 const CACHE_NAME = 'ponto-facial-v12';
 const PWA_ASSET_VERSION = '20260524-icon-v2';
