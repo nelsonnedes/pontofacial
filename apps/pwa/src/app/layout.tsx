@@ -2,7 +2,7 @@ import './globals.css'
 import ClientProviders from '../components/ClientProviders'
 import ConsoleOptimizerClient from '../components/ConsoleOptimizerClient'
 
-const PWA_ASSET_VERSION = '20260524-icon-v2'
+const PWA_ASSET_VERSION = '20260831-p0p4-v13'
 
 export const metadata = { 
   title: 'Ponto Facial PWA', 

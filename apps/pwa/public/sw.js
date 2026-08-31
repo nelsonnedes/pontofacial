@@ -1,8 +1,7 @@
 // Service Worker para Ponto Facial PWA — P4-3 manual (output:export não suporta next-pwa)
-// Versao: 1.0.5 — CACHE v12 — TODO P4 futuro: migrar para Workbox quando SSR (remover output:export)
-
-const CACHE_NAME = 'ponto-facial-v12';
-const PWA_ASSET_VERSION = '20260524-icon-v2';
+// Versao: 1.0.6 — CACHE v13 — P0-P4 hardening + fix Nelson/Camyla (threshold 0.82 + cache invalidation)
+const CACHE_NAME = 'ponto-facial-v13';
+const PWA_ASSET_VERSION = '20260831-p0p4-v13';
 const OFFLINE_URL = '/app';
 
 // Recursos essenciais seguros para cache persistente.
